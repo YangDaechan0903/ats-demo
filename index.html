@@ -548,7 +548,7 @@ const SUPABASE_KEY = "sb_publishable_mTPl3AV_37DJbclJkBMx6w_81Q_pXtz";
 const STORE = "ats_jobs_v1";          // 로컬 캐시(파일 포함 전체 보관)
 const TOKEN_STORE = "ats_session_v1"; // 로그인 세션 보관
 let cloudOK = false;
-let session = null;                   // {access_token, refresh_token, email}
+let session = null;                   // {access_token, refresh_token, expires_at, email}
 
 function loadSession(){
   try{ const r=localStorage.getItem(TOKEN_STORE); if(r) session=JSON.parse(r); }catch(e){ session=null; }
@@ -557,12 +557,60 @@ function saveSession(s){
   session=s;
   try{ if(s) localStorage.setItem(TOKEN_STORE, JSON.stringify(s)); else localStorage.removeItem(TOKEN_STORE); }catch(e){}
 }
-// 로그인했으면 사용자 토큰, 아니면 공개 키를 사용
-function authToken(){ return (session && session.access_token) ? session.access_token : SUPABASE_KEY; }
-function sbHeaders(extra){
-  return Object.assign({ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+authToken(), "Content-Type":"application/json" }, extra||{});
+
+/* ── 토큰 자동 갱신 ──
+   access_token은 보통 1시간 뒤 만료된다. 만료 직전이면 refresh_token으로 새로 발급받아
+   401(인증 만료)을 방지한다. 모든 인증 요청은 이 함수를 통해 유효한 토큰을 얻는다. */
+let refreshInFlight = null;
+async function ensureToken(){
+  if(!session || !session.access_token) return SUPABASE_KEY;   // 비로그인 → 공개 키
+  // 만료 60초 이상 여유가 있으면 그대로 사용
+  if(session.expires_at && Date.now() < session.expires_at - 60000){
+    return session.access_token;
+  }
+  // 만료(임박)이고 refresh_token이 있으면 갱신 시도 (동시 호출은 하나로 합침)
+  if(session.refresh_token){
+    if(!refreshInFlight){
+      refreshInFlight = (async ()=>{
+        try{
+          const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+            method:"POST",
+            headers:{ "apikey":SUPABASE_KEY, "Content-Type":"application/json" },
+            body: JSON.stringify({ refresh_token: session.refresh_token })
+          });
+          const d = await res.json().catch(()=>({}));
+          if(res.ok && d.access_token){
+            saveSession({
+              access_token: d.access_token,
+              refresh_token: d.refresh_token || session.refresh_token,
+              expires_at: Date.now() + ((d.expires_in||3600)*1000),
+              email: session.email
+            });
+            return d.access_token;
+          }
+          console.warn("토큰 갱신 실패", res.status, d);
+          return session.access_token;   // 갱신 실패해도 일단 기존 토큰 반환
+        }catch(e){
+          console.warn("토큰 갱신 오류", e);
+          return session.access_token;
+        }finally{
+          refreshInFlight = null;
+        }
+      })();
+    }
+    return await refreshInFlight;
+  }
+  return session.access_token;
 }
-const SB_HEADERS = null; // (사용 안 함 — sbHeaders() 사용)
+
+// (구) 동기 버전 — 하위 호환용. 내부적으로 마지막으로 알려진 토큰을 반환.
+function authToken(){ return (session && session.access_token) ? session.access_token : SUPABASE_KEY; }
+
+// 모든 REST 호출에서 사용 — 유효한 토큰을 확보한 뒤 헤더를 만든다 (async)
+async function sbHeaders(extra){
+  const tok = await ensureToken();
+  return Object.assign({ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+tok, "Content-Type":"application/json" }, extra||{});
+}
 
 async function signIn(email, password){
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
@@ -574,7 +622,12 @@ async function signIn(email, password){
   if(!res.ok || !data.access_token){
     return { ok:false, msg: (data && (data.error_description||data.msg||data.message)) || ("로그인 실패 ("+res.status+")") };
   }
-  saveSession({ access_token:data.access_token, refresh_token:data.refresh_token, email:(data.user&&data.user.email)||email });
+  saveSession({
+    access_token:data.access_token,
+    refresh_token:data.refresh_token,
+    expires_at: Date.now() + ((data.expires_in||3600)*1000),   // ← 만료 시각 기록
+    email:(data.user&&data.user.email)||email
+  });
   return { ok:true };
 }
 function signOut(){
@@ -603,7 +656,7 @@ async function cloudPush(){
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=id`, {
       method:"POST",
-      headers: sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
+      headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
       body: JSON.stringify({ id:"main", data: lightCopy(), updated_at:new Date().toISOString() })
     });
     if(res.ok) setCloud(true, "☁ 동기화됨");
@@ -613,7 +666,7 @@ async function cloudPush(){
 async function load(){
   let cloud=null;
   try{
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: sbHeaders() });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: await sbHeaders() });
     if(res.ok){ const rows=await res.json(); if(rows.length && Array.isArray(rows[0].data)) cloud=rows[0].data; setCloud(true,"☁ 동기화됨"); }
     else setCloud(false, "⚠ 연결 오류 "+res.status);
   }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
@@ -833,9 +886,10 @@ async function uploadToStorage(file, folder){
     setCloud(true, "☁ 파일 업로드 중…");
     const safe=(file.name||"file").replace(/[^\w.\-]/g,"_");
     const path=`${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}_${safe}`;
+    const tok=await ensureToken();
     const res=await fetch(`${SUPABASE_URL}/storage/v1/object/resumes/${path}`,{
       method:"POST",
-      headers:{ apikey:SUPABASE_KEY, Authorization:"Bearer "+authToken(), "Content-Type": file.type||"application/octet-stream" },
+      headers:{ apikey:SUPABASE_KEY, Authorization:"Bearer "+tok, "Content-Type": file.type||"application/octet-stream" },
       body:file
     });
     if(!res.ok){
@@ -901,7 +955,7 @@ function sideView(c,j){
   const ai=c.aiResult;
   const useAI = !!ai;
   const score = useAI ? ai.score : a.score;
-  const band  = useAI ? (score>=75?["적합도 높음","#2E8B67","#E7F4EE"]:score>=55?["적합도 보통","#2C6FB0","#E7F0F9"]:["적합도 낮음","#C0842D","#FBF1E0"]) : a.band;
+  const band  = useAI ? (score>=75?["적합도 높음","#2E8B67","#E7F4EE"]:score>=55?["적합도 보통","#2C6FB0","#E7F0F9"]:["적합도 낮음","#C0492D","#FBF1E0"]) : a.band;
   const strongList = useAI ? (ai.strengths||[]) : a.strong;
   const weakList   = useAI ? (ai.weaknesses||[]) : a.weak;
   const analysisHtml = (c.analyzed!==false) ? `
@@ -1003,9 +1057,10 @@ async function runAIAnalysis(){
   if(btn){ btn.disabled=true; btn.textContent="AI가 이력서를 읽는 중… (10~20초)"; }
   setCloud(true,"✦ AI 분석 중…");
   try{
+    const tok=await ensureToken();
     const res=await fetch(`${SUPABASE_URL}/functions/v1/analyze-resume`,{
       method:"POST",
-      headers:{ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+authToken(), "Content-Type":"application/json" },
+      headers:{ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+tok, "Content-Type":"application/json" },
       body: JSON.stringify({ resumeText: candidateText(c), jobTitle: j.title, jobReq: reqText(j) })
     });
     const data=await res.json().catch(()=>({}));
@@ -1346,9 +1401,10 @@ async function aiEvalTranscript(){
   const btn=document.getElementById("aiEvalBtn");
   if(btn){ btn.disabled=true; btn.textContent="AI가 녹취록을 읽는 중… (10~20초)"; }
   try{
+    const tok=await ensureToken();
     const res=await fetch(`${SUPABASE_URL}/functions/v1/analyze-resume`,{
       method:"POST",
-      headers:{ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+authToken(), "Content-Type":"application/json" },
+      headers:{ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+tok, "Content-Type":"application/json" },
       body: JSON.stringify({
         resumeText: `[지원자] ${c.name} / ${c.role}\n\n[면접 녹취록]\n${txt}`,
         jobTitle: j.title, jobReq: reqText(j)
