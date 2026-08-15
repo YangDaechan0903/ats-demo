@@ -184,8 +184,25 @@
   /* ── detail overlay ── */
   .detail{position:fixed;inset:0;background:rgba(20,22,27,.45);display:none;z-index:50;padding:22px}
   .detail.show{display:flex}
-  .d-box{margin:auto;background:var(--surface);width:1140px;max-width:100%;height:100%;max-height:920px;
-    border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.28)}
+  .d-box{margin:auto;background:var(--surface);width:1360px;max-width:100%;height:100%;max-height:1000px;
+    border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.28);
+    transition:width .15s ease,max-width .15s ease,max-height .15s ease}
+  .detail{padding:22px}
+  /* 크기 프리셋 */
+  .d-box.size-s{width:1040px;max-height:820px}
+  .d-box.size-m{width:1360px;max-height:1000px}
+  .d-box.size-l{width:1640px;max-height:1120px}
+  .d-box.size-full{width:100%;max-width:100%;max-height:100%;height:100%;border-radius:0}
+  .detail.full-pad{padding:0}
+  /* 상세 본문·글자 키움 */
+  .d-side{font-size:13px}
+  .d-side .kv{font-size:13.5px}
+  .d-side .fit-score{font-size:34px}
+  .size-ctrl{display:inline-flex;align-items:center;gap:2px;background:#F3F5F8;border:1px solid var(--line);border-radius:8px;padding:2px;margin-right:4px}
+  .size-ctrl button{background:transparent;border:0;font:inherit;font-size:11.5px;font-weight:800;color:var(--muted);
+    padding:5px 9px;border-radius:6px;cursor:pointer;line-height:1}
+  .size-ctrl button.on{background:#fff;color:var(--primary);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .size-ctrl button:hover{color:var(--primary)}
   .d-head{display:flex;align-items:flex-start;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line)}
   .d-head .d-stage{font-size:11px;font-weight:800;letter-spacing:.04em}
   .d-head .d-name{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-top:3px}
@@ -308,6 +325,176 @@
     .d-move{flex:1}
     .search input{width:100%}
   }
+
+  /* ═══════════ e-HRIS 확장 (상단 대분류 · 임직원 · 인사기록카드) ═══════════ */
+  /* 상단 글로벌 바 */
+  .gnb{display:flex;align-items:center;gap:2px;background:#16283D;padding:0 14px;height:46px;flex-shrink:0}
+  .gnb .brand{display:flex;align-items:center;gap:8px;color:#fff;font-weight:800;font-size:14px;padding-right:14px;margin-right:6px;border-right:1px solid rgba(255,255,255,.14)}
+  .gnb .brand .g-logo{width:24px;height:24px;border-radius:6px;background:#3E6FA0;display:flex;align-items:center;justify-content:center;font-size:12px}
+  .gnb-item{position:relative}
+  .gnb-item > .gnb-btn{background:transparent;border:0;color:#C4D2E0;font:inherit;font-size:13px;font-weight:700;
+    padding:0 15px;height:46px;cursor:pointer;display:flex;align-items:center;gap:5px}
+  .gnb-item.on > .gnb-btn,.gnb-item > .gnb-btn:hover{color:#fff}
+  .gnb-item.on > .gnb-btn{box-shadow:inset 0 -3px 0 #6FA3D6}
+  .gnb-item .soon{font-size:9px;font-weight:800;color:#8FA6BD;background:rgba(255,255,255,.08);border-radius:10px;padding:1px 5px;margin-left:3px}
+  .gnb-menu{position:absolute;top:46px;left:8px;background:#fff;border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 12px 34px rgba(0,0,0,.18);padding:6px;min-width:180px;display:none;z-index:80}
+  .gnb-item.open .gnb-menu{display:block}
+  .gnb-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:0;
+    font:inherit;font-size:13px;color:var(--ink);padding:9px 11px;border-radius:7px;cursor:pointer;font-weight:600}
+  .gnb-menu button:hover{background:var(--primary-soft)}
+  .gnb-menu button.sub-on{background:var(--primary-soft);color:var(--primary);font-weight:800}
+  .gnb-menu .mlabel{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--faint);padding:6px 11px 3px;text-transform:uppercase}
+  .gnb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .gnb-user{color:#B9C8D8;font-size:11.5px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gnb-logout{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#D6E1EC;
+    border-radius:7px;padding:6px 10px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+  .gnb-logout:hover{background:rgba(255,255,255,.16)}
+  .hris-shell{flex:1;display:flex;flex-direction:column;min-height:0}
+  .app{flex:1;min-height:0}
+  /* 모듈 컨테이너 (ATS 외) */
+  .module{flex:1;display:none;flex-direction:column;min-width:0;background:var(--bg);overflow:hidden}
+  .module.show{display:flex}
+  #hris-ats{flex-direction:row}
+  #hris-ats.show{display:flex}
+  .mod-head{padding:16px 24px 14px;border-bottom:1px solid var(--line);background:var(--surface);flex-shrink:0}
+  .mod-head h1{font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .mod-head .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .mod-head-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .mod-head-top .spacer{flex:1}
+  .mod-body{flex:1;overflow-y:auto;padding:20px 24px 40px}
+  /* 추후개발 안내 */
+  .soon-wrap{max-width:560px;margin:60px auto;text-align:center;background:var(--surface);border:1px solid var(--line);
+    border-radius:16px;padding:44px 36px;box-shadow:var(--shadow)}
+  .soon-wrap .ico{font-size:34px;margin-bottom:14px}
+  .soon-wrap h2{font-size:18px;font-weight:800;margin-bottom:8px}
+  .soon-wrap p{font-size:13px;color:var(--muted);line-height:1.7}
+  .soon-tag{display:inline-block;font-size:11px;font-weight:800;color:#C0842D;background:#FBF1E0;border-radius:20px;padding:4px 12px;margin-bottom:16px}
+  /* 임직원 명부 */
+  .emp-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .emp-card{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:16px;cursor:pointer;
+    box-shadow:var(--shadow);transition:border-color .12s}
+  .emp-card:hover{border-color:#CBD5DF}
+  .emp-card .ec-top{display:flex;align-items:center;gap:12px}
+  .emp-avatar{width:44px;height:44px;border-radius:11px;background:var(--primary-soft);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0}
+  .emp-card .ec-name{font-size:15px;font-weight:800}
+  .emp-card .ec-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .emp-card .ec-src{font-size:9.5px;font-weight:800;border-radius:20px;padding:2px 8px}
+  .emp-card .ec-body{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #F0F2F5}
+  .emp-status{font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
+  .emp-empty{text-align:center;color:var(--faint);font-size:13px;padding:70px 20px;line-height:1.7}
+  /* 임직원 상세 (풀스크린 오버레이) */
+  .emp-detail{position:fixed;inset:0;background:rgba(20,22,27,.5);display:none;z-index:56;padding:22px}
+  .emp-detail.show{display:flex}
+  .ed-box{margin:auto;background:var(--bg);width:1080px;max-width:100%;height:100%;max-height:940px;border-radius:16px;
+    display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.3)}
+  .ed-head{display:flex;align-items:center;gap:14px;padding:16px 20px;background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0}
+  .ed-head .ed-name{font-size:19px;font-weight:800}
+  .ed-head .ed-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .ed-tabs{display:flex;gap:2px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0;overflow-x:auto}
+  .ed-tab{background:transparent;border:0;font:inherit;font-size:13px;font-weight:700;color:var(--muted);
+    padding:12px 15px;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent}
+  .ed-tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+  .ed-body{flex:1;overflow-y:auto;padding:22px 24px 40px}
+  .ed-body .panel{display:none}
+  .ed-body .panel.on{display:block}
+  /* 카드형 섹션 */
+  .rc-sec{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:18px 20px;margin-bottom:16px}
+  .rc-sec > h3{font-size:13px;font-weight:800;letter-spacing:.02em;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .rc-sec > h3 .badge{font-size:10px;font-weight:700;color:var(--primary);background:var(--primary-soft);border-radius:20px;padding:2px 9px}
+  /* 폼 그리드 */
+  .fg{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .fg.c3{grid-template-columns:repeat(3,1fr)}
+  .fg.c4{grid-template-columns:repeat(4,1fr)}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld.full{grid-column:1/-1}
+  .fld label{font-size:11px;font-weight:700;color:var(--muted)}
+  .fld input,.fld select,.fld textarea{border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit;
+    font-size:12.5px;outline:0;color:var(--ink);background:#fff;width:100%}
+  .fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .fld input:disabled,.fld textarea:disabled,.fld select:disabled{background:#F5F7F9;color:#5B6672;cursor:default}
+  .fld .ro{padding:9px 10px;font-size:12.5px;background:#F5F7F9;border:1px solid var(--line);border-radius:8px;min-height:37px;color:var(--ink)}
+  /* 반복 테이블 (학력·경력·자격·가족·발령) */
+  .rtable{width:100%;border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:12px}
+  .rtable table{width:100%;border-collapse:collapse}
+  .rtable th{background:#F3F6F9;font-size:10.5px;font-weight:800;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .rtable td{padding:6px 8px;border-bottom:1px solid #F1F3F5;vertical-align:middle}
+  .rtable tr:last-child td{border-bottom:0}
+  .rtable td input,.rtable td select{width:100%;border:1px solid transparent;border-radius:6px;padding:6px 7px;font:inherit;font-size:12px;outline:0;background:transparent;color:var(--ink)}
+  .rtable td input:focus,.rtable td select:focus{border-color:var(--primary);background:#fff}
+  .rtable td input:disabled,.rtable td select:disabled{color:#3A4048}
+  .rtable .row-del{background:none;border:0;color:var(--faint);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:5px}
+  .rtable .row-del:hover{background:#FBF2F0;color:#C0492D}
+  .rtable-add{margin-top:8px;font:inherit;font-size:11.5px;font-weight:700;color:var(--primary);background:var(--primary-soft);
+    border:1px solid #D5E0EC;border-radius:8px;padding:7px 12px;cursor:pointer}
+  .rtable-add:hover{background:#DEE9F3}
+  /* 구비서류 체크리스트 */
+  .doc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F1F3F5;font-size:12.5px}
+  .doc-row:last-child{border-bottom:0}
+  .doc-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--primary);cursor:pointer}
+  .doc-row .dr-name{flex:1}
+  .doc-row .dr-note{font-size:11px;color:var(--faint)}
+  .doc-row.done .dr-name{color:var(--muted)}
+  /* 편집 모드 토글 */
+  .edit-toggle{display:flex;align-items:center;gap:8px}
+  .edit-badge{font-size:10.5px;font-weight:800;border-radius:20px;padding:3px 10px}
+  .edit-badge.view{color:var(--muted);background:#EEF1F4}
+  .edit-badge.edit{color:#2E8B67;background:#E7F4EE}
+  /* 계약 임금 요약 카드 */
+  .wage-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .wage-item{background:#F7F9FB;border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+  .wage-item .wl{font-size:10.5px;color:var(--muted);font-weight:700}
+  .wage-item .wv{font-size:14px;font-weight:800;margin-top:3px}
+  .wage-item.hl{background:var(--primary-soft);border-color:#D5E0EC}
+  .wage-item.hl .wv{color:var(--primary)}
+  .law-note{font-size:11px;color:#2A4A63;background:#EEF4F9;border:1px solid #D6E5F0;border-radius:9px;padding:9px 12px;margin-bottom:14px;line-height:1.55}
+  .law-note b{font-weight:800}
+  @media(max-width:820px){
+    .gnb{overflow-x:auto}
+    .gnb-item > .gnb-btn{padding:0 11px;font-size:12px}
+    .fg,.fg.c3,.fg.c4,.wage-grid{grid-template-columns:1fr}
+    .emp-detail{padding:0}
+    .ed-box{border-radius:0;max-height:100%}
+    .rtable{overflow-x:auto}
+  }
+
+  /* ═══════ 근로계약서 미리보기·인쇄 ═══════ */
+  .contract-doc-overlay{position:fixed;inset:0;background:#3A4048;z-index:70;display:none;flex-direction:column}
+  .contract-doc-overlay.show{display:flex}
+  .cdo-bar{display:flex;align-items:center;gap:12px;padding:12px 20px;background:#232a33;flex-shrink:0}
+  .cdo-title{color:#fff;font-weight:800;font-size:15px}
+  .cdo-tools{margin-left:auto;display:flex;gap:8px}
+  .cdo-scroll{flex:1;overflow-y:auto;padding:24px;display:flex;justify-content:center}
+  .cdo-paper{background:#fff;width:210mm;max-width:100%;min-height:297mm;padding:18mm 16mm;box-shadow:0 8px 40px rgba(0,0,0,.4);
+    font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#111;font-size:11px;line-height:1.5}
+  /* 계약서 서식 */
+  .kd-title{text-align:center;font-size:22px;font-weight:800;letter-spacing:14px;padding:6px 0 14px;border:2px solid #111;margin-bottom:0}
+  .kd-table{width:100%;border-collapse:collapse;margin-bottom:0}
+  .kd-table td,.kd-table th{border:1px solid #333;padding:5px 7px;vertical-align:middle}
+  .kd-table .lbl{background:#E8EFE9;font-weight:700;text-align:center;width:110px;white-space:nowrap}
+  .kd-table .lbl2{background:#E8EFE9;font-weight:700;text-align:center;width:90px;white-space:nowrap}
+  .kd-table .ctr{text-align:center}
+  .kd-sec-lbl{background:#DCE7DD;font-weight:800;text-align:center;writing-mode:vertical-rl;letter-spacing:3px;width:34px}
+  .kd-wage th{background:#EAF0F6;font-weight:700;text-align:center;font-size:10.5px}
+  .kd-wage td{font-size:10.5px}
+  .kd-note{font-size:10px;line-height:1.6;padding:7px 6px}
+  .kd-note ol{margin:0;padding-left:16px}
+  .kd-sign{margin-top:26px}
+  .kd-sign .kd-date{text-align:center;font-size:13px;font-weight:700;margin-bottom:22px}
+  .kd-sign-row{display:flex;gap:40px;justify-content:space-between;padding:0 10px}
+  .kd-sign-col{flex:1;font-size:11.5px;line-height:2.1}
+  .kd-sign-col .sh{font-weight:800;margin-bottom:4px}
+  @media print{
+    body *{visibility:hidden}
+    #contractDocOverlay,#contractDocOverlay *{visibility:visible}
+    #contractDocOverlay{position:absolute;inset:0;background:#fff;display:block}
+    .cdo-bar{display:none}
+    .cdo-scroll{overflow:visible;padding:0;display:block}
+    .cdo-paper{box-shadow:none;width:100%;min-height:auto;padding:0;margin:0}
+    @page{size:A4;margin:12mm}
+  }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
@@ -324,7 +511,48 @@
   </div>
 </div>
 
-<div class="app" id="appRoot" style="display:none">
+<!-- ═══════════ e-HRIS 상단 대분류 네비게이션 ═══════════ -->
+<div class="hris-shell" id="hrisShell" style="display:none">
+<nav class="gnb" id="gnb">
+  <div class="brand"><span class="g-logo">H</span>e-HRIS</div>
+
+  <div class="gnb-item" data-axis="acquire">
+    <button class="gnb-btn" onclick="toggleAxis('acquire')">확보 <span style="font-size:9px">▾</span></button>
+    <div class="gnb-menu">
+      <div class="mlabel">확보</div>
+      <button data-mod="ats" onclick="goModule('ats')">📋 채용관리 (ATS)</button>
+      <button data-mod="contract" onclick="goModule('contract')">📝 근로계약</button>
+    </div>
+  </div>
+
+  <div class="gnb-item" data-axis="develop">
+    <button class="gnb-btn" onclick="goModule('develop')">개발 <span class="soon">추후</span></button>
+  </div>
+  <div class="gnb-item" data-axis="evaluate">
+    <button class="gnb-btn" onclick="goModule('evaluate')">평가 <span class="soon">추후</span></button>
+  </div>
+  <div class="gnb-item" data-axis="reward">
+    <button class="gnb-btn" onclick="goModule('reward')">보상 <span class="soon">추후</span></button>
+  </div>
+
+  <div class="gnb-item" data-axis="retain">
+    <button class="gnb-btn" onclick="toggleAxis('retain')">유지 <span style="font-size:9px">▾</span></button>
+    <div class="gnb-menu">
+      <div class="mlabel">유지</div>
+      <button data-mod="employees" onclick="goModule('employees')">👥 임직원 · 인사기록카드</button>
+      <button data-mod="labor" onclick="goModule('labor')">⚖️ 노무관리</button>
+    </div>
+  </div>
+
+  <div class="gnb-right">
+    <span class="gnb-user" id="gnbUser"></span>
+    <button class="gnb-logout" onclick="signOut()">로그아웃</button>
+  </div>
+</nav>
+
+<div class="app" id="appRoot">
+  <!-- ═══════════ 확보 > 채용관리(ATS) — 기존 그대로 ═══════════ -->
+  <div id="hris-ats" class="module show" style="flex:1;min-width:0">
   <!-- LEFT: job list -->
   <aside class="side">
     <div class="side-brand">
@@ -381,11 +609,107 @@
     </div>
     <div class="board" id="board"></div>
   </main>
+  </div><!-- /hris-ats -->
+
+  <!-- ═══════════ 유지 > 임직원 명부 ═══════════ -->
+  <div id="hris-employees" class="module">
+    <div class="mod-head">
+      <div class="mod-head-top">
+        <div><h1>임직원 · 인사기록카드</h1><div class="sub" id="empSub">재직 중인 임직원의 인사기록을 관리합니다</div></div>
+        <div class="spacer"></div>
+        <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="empQ" placeholder="이름·부서 검색" oninput="renderEmployees()"></div>
+        <button class="btn" onclick="openEmpNew()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> 임직원 등록</button>
+      </div>
+    </div>
+    <div class="mod-body"><div class="emp-grid" id="empGrid"></div></div>
+  </div>
+
+  <!-- ═══════════ 확보 > 근로계약 (목록) ═══════════ -->
+  <div id="hris-contract" class="module">
+    <div class="mod-head">
+      <div class="mod-head-top">
+        <div><h1>근로계약</h1><div class="sub">근로기준법 제17조 명시사항 기준 · 임직원별 근로계약을 관리합니다</div></div>
+        <div class="spacer"></div>
+        <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="conQ" placeholder="이름 검색" oninput="renderContractList()"></div>
+      </div>
+    </div>
+    <div class="mod-body">
+      <div class="law-note">📖 <b>근로기준법 제17조</b> — 사용자는 근로계약 체결 시 ①임금 ②소정근로시간 ③휴일 ④연차유급휴가 및 근무장소·업무 등을 명시하고, 그 서면을 근로자에게 교부해야 합니다. 아래 항목은 이 명시사항을 따릅니다.</div>
+      <div class="emp-grid" id="conGrid"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 유지 > 노무관리 (목록) ═══════════ -->
+  <div id="hris-labor" class="module">
+    <div class="mod-head">
+      <div class="mod-head-top">
+        <div><h1>노무관리</h1><div class="sub">전직발령 내역 · 노동조합 가입 현황을 관리합니다</div></div>
+        <div class="spacer"></div>
+        <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="labQ" placeholder="이름 검색" oninput="renderLaborList()"></div>
+      </div>
+    </div>
+    <div class="mod-body"><div class="emp-grid" id="labGrid"></div></div>
+  </div>
+
+  <!-- ═══════════ 추후개발 모듈 (개발·평가·보상) ═══════════ -->
+  <div id="hris-develop" class="module">
+    <div class="mod-body"><div class="soon-wrap"><div class="ico">📚</div><div class="soon-tag">추후 개발 예정</div>
+      <h2>개발 · 법정의무교육</h2>
+      <p>임직원 대상 법정의무교육(성희롱예방·개인정보보호·산업안전보건·장애인식개선 등)의 이수 현황을 관리하는 모듈입니다. 다음 단계에서 구현됩니다.</p></div></div>
+  </div>
+  <div id="hris-evaluate" class="module">
+    <div class="mod-body"><div class="soon-wrap"><div class="ico">📊</div><div class="soon-tag">추후 개발 예정</div>
+      <h2>평가</h2>
+      <p>목표관리(MBO)·역량평가·다면평가 등 성과평가 체계를 관리하는 모듈입니다. 다음 단계에서 구현됩니다.</p></div></div>
+  </div>
+  <div id="hris-reward" class="module">
+    <div class="mod-body"><div class="soon-wrap"><div class="ico">💰</div><div class="soon-tag">추후 개발 예정</div>
+      <h2>보상</h2>
+      <p>연봉·성과급·복리후생 등 보상 체계를 관리하는 모듈입니다. 인사기록카드의 연봉내역과 연계될 예정입니다.</p></div></div>
+  </div>
+
+</div><!-- /appRoot -->
+</div><!-- /hris-shell -->
+
+<!-- ═══════════ 임직원 상세 (인사기록카드 · 근로계약 · 노무 통합) ═══════════ -->
+<div class="emp-detail" id="empDetail">
+  <div class="ed-box">
+    <div class="ed-head">
+      <div class="emp-avatar" id="edAvatar" style="width:48px;height:48px"></div>
+      <div style="flex:1;min-width:0"><div class="ed-name" id="edName"></div><div class="ed-sub" id="edSub"></div></div>
+      <div class="edit-toggle">
+        <span class="edit-badge view" id="edEditBadge">읽기 전용</span>
+        <button class="btn ghost" id="edEditBtn" onclick="toggleEmpEdit()">✎ 수정</button>
+      </div>
+      <button class="x" onclick="closeEmpDetail()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="ed-tabs" id="edTabs">
+      <button class="ed-tab on" data-panel="record" onclick="edTab('record')">인사기록카드</button>
+      <button class="ed-tab" data-panel="contract" onclick="edTab('contract')">근로계약</button>
+      <button class="ed-tab" data-panel="labor" onclick="edTab('labor')">노무</button>
+    </div>
+    <div class="ed-body" id="edBody"></div>
+  </div>
+</div>
+
+<!-- ═══════════ 근로계약서 생성 · 미리보기 ═══════════ -->
+<div class="contract-doc-overlay" id="contractDocOverlay">
+  <div class="cdo-bar">
+    <div class="cdo-title">근로계약서 미리보기</div>
+    <div class="cdo-tools">
+      <button class="btn ghost" onclick="printContractDoc()">🖨 인쇄 · PDF 저장</button>
+      <button class="btn ghost" onclick="closeContractDoc()">닫기</button>
+    </div>
+  </div>
+  <div class="cdo-scroll"><div class="cdo-paper" id="contractPaper"></div></div>
 </div>
 
 <!-- candidate detail -->
 <div class="detail" id="detail">
-  <div class="d-box">
+  <div class="d-box" id="dBox">
     <div class="d-head">
       <div>
         <div class="d-stage" id="dStage"></div>
@@ -393,6 +717,12 @@
         <div class="d-role" id="dRole"></div>
       </div>
       <div class="d-head-tools">
+        <div class="size-ctrl" id="dSizeCtrl" title="팝업 크기 조절">
+          <button data-size="s" onclick="setDetailSize('s')">작게</button>
+          <button data-size="m" onclick="setDetailSize('m')">보통</button>
+          <button data-size="l" onclick="setDetailSize('l')">크게</button>
+          <button data-size="full" onclick="setDetailSize('full')">⛶ 전체</button>
+        </div>
         <button class="d-move" id="dPrev" onclick="moveStage(-1)">← 이전</button>
         <button class="d-move primary" id="dNext" onclick="moveStage(1)">다음 →</button>
         <button class="d-move" id="dRej" style="color:#C0492D;border-color:#E8CDC6" onclick="openRej()">불합격</button>
@@ -546,6 +876,7 @@ function seed(){return [
 const SUPABASE_URL = "https://nkdhbpkuyemejpzyvleu.supabase.co";
 const SUPABASE_KEY = "sb_publishable_mTPl3AV_37DJbclJkBMx6w_81Q_pXtz";
 const STORE = "ats_jobs_v1";          // 로컬 캐시(파일 포함 전체 보관)
+const EMP_STORE = "hris_employees_v1"; // 임직원 로컬 캐시
 const TOKEN_STORE = "ats_session_v1"; // 로그인 세션 보관
 let cloudOK = false;
 let session = null;                   // {access_token, refresh_token, expires_at, email}
@@ -647,64 +978,93 @@ function lightCopy(){
 }
 let pushTimer=null;
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify(JOBS)); }catch(e){ console.warn("로컬 저장 실패",e); }
+  try{ persistLocal(); }catch(e){ console.warn("로컬 저장 실패",e); }
   clearTimeout(pushTimer);
   pushTimer = setTimeout(cloudPush, 700);   // 잠깐 모아서 한 번에 전송
   return true;
 }
+// 임직원도 파일 제외한 가벼운 복사본으로 (인사기록카드엔 큰 파일이 붙을 수 있음)
+function lightEmployees(){
+  return (EMPLOYEES||[]).map(e=>({ ...e, contractFileData:"", photoData:"" }));
+}
 async function cloudPush(){
   try{
+    const payload = { jobs: lightCopy(), employees: lightEmployees() };
     const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=id`, {
       method:"POST",
       headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
-      body: JSON.stringify({ id:"main", data: lightCopy(), updated_at:new Date().toISOString() })
+      body: JSON.stringify({ id:"main", data: payload, updated_at:new Date().toISOString() })
     });
     if(res.ok) setCloud(true, "☁ 동기화됨");
     else setCloud(false, "⚠ 동기화 오류 "+res.status);
   }catch(e){ setCloud(false, "⚠ 오프라인(로컬 저장됨)"); }
 }
+// app_state.data는 두 형식 가능: (구형) JOBS 배열 그대로 / (신형) {jobs, employees}
+function unpackData(d){
+  if(Array.isArray(d)) return { jobs:d, employees:[] };       // 구형 → 자동 마이그레이션
+  if(d && typeof d==="object") return { jobs:Array.isArray(d.jobs)?d.jobs:[], employees:Array.isArray(d.employees)?d.employees:[] };
+  return null;
+}
 async function load(){
   let cloud=null;
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: await sbHeaders() });
-    if(res.ok){ const rows=await res.json(); if(rows.length && Array.isArray(rows[0].data)) cloud=rows[0].data; setCloud(true,"☁ 동기화됨"); }
+    if(res.ok){ const rows=await res.json(); if(rows.length) cloud=unpackData(rows[0].data); setCloud(true,"☁ 동기화됨"); }
     else setCloud(false, "⚠ 연결 오류 "+res.status);
   }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
 
-  let localRaw=null;
-  try{ const r=localStorage.getItem(STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localRaw=a; } }catch(e){}
+  // 로컬 캐시 (STORE=jobs, EMP_STORE=employees)
+  let localJobs=null, localEmps=null;
+  try{ const r=localStorage.getItem(STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localJobs=a; } }catch(e){}
+  try{ const r=localStorage.getItem(EMP_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localEmps=a; } }catch(e){}
 
-  if(cloud && cloud.length){
-    // 클라우드 데이터를 기준으로 하되, 이 기기에 있는 첨부파일을 다시 붙여줌
+  if(cloud && (cloud.jobs.length || cloud.employees.length)){
+    // 첨부파일은 기기 로컬에만 있으므로 클라우드 데이터에 다시 붙여줌
     const fileMap={};
-    if(localRaw) for(const j of localRaw) for(const c of (j.cands||[])) fileMap[c.id]={fileData:c.fileData,audioData:c.audioData};
-    for(const j of cloud) for(const c of (j.cands||[])){ const f=fileMap[c.id]; if(f){ if(f.fileData)c.fileData=f.fileData; if(f.audioData)c.audioData=f.audioData; } }
-    JOBS=cloud;
-    try{ localStorage.setItem(STORE, JSON.stringify(JOBS)); }catch(e){}
-  } else if(localRaw && localRaw.length){
-    JOBS=localRaw; cloudPush();          // 클라우드는 비었는데 로컬에 있으면 올려줌
+    if(localJobs) for(const j of localJobs) for(const c of (j.cands||[])) fileMap[c.id]={fileData:c.fileData,audioData:c.audioData};
+    for(const j of cloud.jobs) for(const c of (j.cands||[])){ const f=fileMap[c.id]; if(f){ if(f.fileData)c.fileData=f.fileData; if(f.audioData)c.audioData=f.audioData; } }
+    const empFileMap={};
+    if(localEmps) for(const e of localEmps) empFileMap[e.id]={contractFileData:e.contractFileData,photoData:e.photoData};
+    for(const e of cloud.employees){ const f=empFileMap[e.id]; if(f){ if(f.contractFileData)e.contractFileData=f.contractFileData; if(f.photoData)e.photoData=f.photoData; } }
+    JOBS=cloud.jobs.length?cloud.jobs:seed();
+    EMPLOYEES=cloud.employees||[];
+    persistLocal();
+  } else if(localJobs && localJobs.length){
+    JOBS=localJobs; EMPLOYEES=localEmps||[]; cloudPush();
   } else {
-    JOBS=seed(); cloudPush();            // 완전 첫 실행
+    JOBS=seed(); EMPLOYEES=[]; cloudPush();
   }
+}
+function persistLocal(){
+  try{ localStorage.setItem(STORE, JSON.stringify(JOBS)); }catch(e){}
+  try{ localStorage.setItem(EMP_STORE, JSON.stringify(EMPLOYEES)); }catch(e){}
 }
 
 let JOBS=[];
+let EMPLOYEES=[];        // e-HRIS 임직원 명부
+let curModule="ats";     // 현재 활성 모듈
+let openEmpId=null, empEdit=false, edPanel="record";
+let nextEmpId=1;
 let curJob=null;
 let openId=null, dragId=null, editMode=false, blobUrl=null, pickedFile=null;
 let nextJobId=1, nextCandId=101;
 function computeIds(){
   nextJobId=Math.max(0,...JOBS.map(j=>+j.id||0))+1;
   nextCandId=Math.max(100,...JOBS.flatMap(j=>(j.cands||[]).map(c=>+c.id||0)))+1;
+  nextEmpId=Math.max(0,...EMPLOYEES.map(e=>+e.id||0))+1;
 }
 async function startApp(){
   document.getElementById("loginScreen").style.display="none";
-  document.getElementById("appRoot").style.display="flex";
+  document.getElementById("hrisShell").style.display="flex";
   const su=document.getElementById("sideUser");
   if(su) su.textContent = session && session.email ? "👤 "+session.email : "";
+  const gu=document.getElementById("gnbUser");
+  if(gu) gu.textContent = session && session.email ? "👤 "+session.email : "";
   await load();
   curJob = JOBS[0] ? JOBS[0].id : null;
   computeIds();
   render();
+  goModule(curModule||"ats");   // 초기 모듈
 }
 async function doLogin(){
   const btn=document.getElementById("liBtn");
@@ -723,7 +1083,7 @@ async function init(){
   if(session && session.access_token){ await startApp(); }
   else {
     document.getElementById("loginScreen").style.display="flex";
-    document.getElementById("appRoot").style.display="none";
+    document.getElementById("hrisShell").style.display="none";
     const pw=document.getElementById("liPw");
     if(pw) pw.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
     const em=document.getElementById("liEmail");
@@ -917,7 +1277,20 @@ async function uploadAndAttach(c, file, kind){
   }
 }
 function findCand(id){for(const j of JOBS){const c=j.cands.find(x=>x.id===id);if(c)return c;}return null;}
-function openDetail(id){openId=id;editMode=false;renderDetail();$("#detail").classList.add('show');}
+let detailSize = (function(){ try{ return localStorage.getItem("ats_detail_size")||"m"; }catch(e){ return "m"; } })();
+function applyDetailSize(){
+  const box=document.getElementById("dBox"); if(!box) return;
+  box.className="d-box size-"+detailSize;
+  const det=document.getElementById("detail");
+  if(det) det.classList.toggle("full-pad", detailSize==="full");
+  document.querySelectorAll("#dSizeCtrl button").forEach(b=>b.classList.toggle("on", b.getAttribute("data-size")===detailSize));
+}
+function setDetailSize(s){
+  detailSize=s;
+  try{ localStorage.setItem("ats_detail_size", s); }catch(e){}
+  applyDetailSize();
+}
+function openDetail(id){openId=id;editMode=false;renderDetail();$("#detail").classList.add('show');applyDetailSize();}
 function renderDetail(){
   const c=findCand(openId); if(!c)return;
   const j=jobOf(openId); const s=STAGES[stageIdx(c.stage)];
@@ -978,7 +1351,27 @@ function sideView(c,j){
       <button class="btn" id="aiBtn" style="width:100%;justify-content:center" onclick="runAIAnalysis()">✦ AI 직무적합성 분석 실행</button>
       <button class="edit-btn" style="margin-top:8px" onclick="runAnalysis()">AI 없이 간단 분석</button>
     </div>`;
-  return rejB+rpB+analysisHtml+`
+  // ── 최종합격 시: 입사일자 입력 + 근로계약 연계 ──
+  const alreadyEmp = EMPLOYEES.find(e=>e.fromCandId===c.id);
+  const hireHtml = (c.stage==="pass" && !c.rejected) ? `
+    <div class="side-sec">
+      <div class="sh"><h4>🎉 최종 합격 · 입사 처리</h4></div>
+      <div style="background:#F0F9F4;border:1px solid #C4E3D2;border-radius:11px;padding:14px">
+        ${alreadyEmp ? `
+          <div style="font-size:12.5px;color:#2E6B4E;line-height:1.6;margin-bottom:10px">
+            ✓ 이미 임직원으로 전환되었습니다.<br>입사일: <b>${esc(alreadyEmp.joinDate||"미정")}</b></div>
+          <button class="btn" style="width:100%;justify-content:center" onclick="gotoEmpContract(${alreadyEmp.id})">📝 근로계약 작성/수정하러 가기</button>
+        ` : `
+          <div style="font-size:12px;color:#2E6B4E;line-height:1.55;margin-bottom:10px">
+            입사일자를 입력하면 임직원으로 등록되고, <b>근로계약 작성</b>으로 이어집니다.</div>
+          <div class="efield" style="margin-bottom:10px"><label>입사일자</label>
+            <input id="hireDate" type="date" value="${esc(c.hireDate||todayISO())}" oninput="saveHireDate()"></div>
+          <button class="btn" style="width:100%;justify-content:center" onclick="hireAndContract()">✓ 입사 확정 · 근로계약 작성</button>
+        `}
+      </div>
+    </div>` : "";
+
+  return rejB+rpB+analysisHtml+hireHtml+`
     <div class="side-sec"><div class="sh"><h4>인적 · 지원 정보</h4>
       <button class="edit-btn" onclick="startEdit()">✎ 수정</button></div>
       <div class="kv"><span class="k">직무</span><span class="v">${esc(c.role)}</span></div>
@@ -1508,6 +1901,695 @@ async function cloudRefresh(){ await load(); curJob=(JOBS.find(j=>j.id===curJob)
 function resetDemo(){if(confirm("등록한 데이터를 모두 지우고 데모 초기 상태로 되돌릴까요?\n(클라우드 데이터도 초기화됩니다)")){JOBS=seed();computeIds();curJob=JOBS[0].id;try{localStorage.removeItem(STORE);}catch(e){}cloudPush();closeDetail();render();}}
 
 document.addEventListener('keydown',e=>{if(e.key==="Escape"){closeItv();closeDetail();closeAdd();closeJob();closeRej();}});
+
+/* ═══════════════════════════════════════════════════════════
+   e-HRIS 확장 — 모듈 전환 · 임직원 · 인사기록카드 · 근로계약 · 노무
+   (기존 ATS 코드는 위에 그대로. 아래는 전부 추가분)
+   ═══════════════════════════════════════════════════════════ */
+const MODULES=["ats","contract","develop","evaluate","reward","employees","labor"];
+const AXIS_OF={ats:"acquire",contract:"acquire",develop:"develop",evaluate:"evaluate",reward:"reward",employees:"retain",labor:"retain"};
+
+function toggleAxis(axis){
+  const item=document.querySelector(`.gnb-item[data-axis="${axis}"]`);
+  const wasOpen=item.classList.contains("open");
+  document.querySelectorAll(".gnb-item").forEach(i=>i.classList.remove("open"));
+  if(!wasOpen) item.classList.add("open");
+}
+document.addEventListener("click",e=>{ if(!e.target.closest(".gnb-item")) document.querySelectorAll(".gnb-item").forEach(i=>i.classList.remove("open")); });
+
+function goModule(mod){
+  if(!MODULES.includes(mod)) mod="ats";
+  curModule=mod;
+  document.querySelectorAll(".gnb-item").forEach(i=>i.classList.remove("open"));
+  // 활성 축 표시
+  document.querySelectorAll(".gnb-item").forEach(i=>i.classList.toggle("on", i.getAttribute("data-axis")===AXIS_OF[mod]));
+  // 서브메뉴 활성 표시
+  document.querySelectorAll(".gnb-menu button").forEach(b=>b.classList.toggle("sub-on", b.getAttribute("data-mod")===mod));
+  // 모듈 표시 전환
+  document.getElementById("hris-ats").classList.toggle("show", mod==="ats");
+  MODULES.filter(m=>m!=="ats").forEach(m=>{
+    const el=document.getElementById("hris-"+m); if(el) el.classList.toggle("show", mod===m);
+  });
+  // 각 모듈 진입 시 렌더
+  if(mod==="employees") renderEmployees();
+  else if(mod==="contract") renderContractList();
+  else if(mod==="labor") renderLaborList();
+}
+
+/* ── 임직원 데이터 유틸 ── */
+function computeEmpIds(){ nextEmpId=Math.max(0,...EMPLOYEES.map(e=>+e.id||0))+1; }
+function findEmp(id){ return EMPLOYEES.find(e=>e.id===id)||null; }
+function empInitial(name){ return (name||"?").trim().slice(0,1); }
+function blankEmployee(){
+  return {
+    id:nextEmpId++, source:"direct", status:"active",
+    name:"", engName:"", birth:"", gender:"", dept:"", position:"",
+    addr:"", email:"", phone:"", emgContact:"", emgRelation:"",
+    joinDate:"", leaveDate:"",
+    education:[], career:[], certs:[], family:[],
+    military:{status:"해당없음", branch:"", mos:"", period:""},
+    docs:{}, 
+    contract:{
+      // 사용자(갑) 정보 — 계약서마다 직접 입력
+      empName:"", empCeo:"", empAddr:"",
+      // 근로계약기간 / 연봉계약기간 / 수습
+      periodType:"기간의 정함이 없음(정규직)", periodStart:"", periodEnd:"",
+      salaryPeriodStart:"", salaryPeriodEnd:"",
+      probation:"3개월", 
+      // 근무조건
+      workDays:"주5일(월~금)", workStart:"09:00", workEnd:"18:00", breakTime:"12:30~13:30",
+      holiday:"주휴일: 일요일 (주 1회 유급)", annualLeave:"근로기준법 제60조에 따라 부여",
+      workPlace:"", jobDuty:"",
+      // 임금
+      wageMonthly:"", wageAnnual:"",
+      // 동적 급여 산출내역 (라벨+금액+비고) — 첨부 계약서 기준 기본 항목
+      wageItems:[
+        {label:"기본급", amount:"", note:"월 소정근로 209시간 (주휴수당 포함)"},
+        {label:"고정연장근로수당", amount:"", note:"통상시급 × 월 연장근로 × 1.5"},
+        {label:"고정야간근로수당", amount:"", note:"통상시급 × 월 야간근로 × 0.5"},
+        {label:"고정휴일근로수당", amount:"", note:"통상시급 × 월 휴일근로 × 1.5"},
+        {label:"연차수당", amount:"", note:"통상시급 × 8시간"},
+        {label:"복리후생비", amount:"", note:"해당자에 한함"},
+        {label:"식대", amount:"", note:"해당자에 한함"}
+      ]
+    },
+    labor:{ transfers:[], unionJoined:false, unionName:"" },
+    createdAt:new Date().toISOString()
+  };
+}
+// 구비서류 기본 목록 (첨부 엑셀 기준)
+const DOC_LIST=[
+  {k:"resident",n:"주민등록등본"},{k:"idcard",n:"신분증 사본"},{k:"bankbook",n:"급여통장 사본"},
+  {k:"license",n:"자격증·면허증 사본"},{k:"photo",n:"반명함 사진 1장"},{k:"career",n:"경력증명서"},
+  {k:"withhold",n:"원천징수영수증"},{k:"laborContract",n:"근로·연봉 계약서"},{k:"recordCard",n:"인사기록카드"}
+];
+
+/* ── ATS 최종합격자 → 임직원 전환 ── */
+function eligibleForConversion(){
+  // 최종 합격(pass) 단계이면서 아직 임직원으로 전환 안 된 지원자
+  const conv=new Set(EMPLOYEES.filter(e=>e.fromCandId).map(e=>e.fromCandId));
+  const out=[];
+  for(const j of JOBS) for(const c of (j.cands||[])){
+    if(c.rejected) continue;
+    if(c.stage==="pass" && !conv.has(c.id)) out.push({c,j});
+  }
+  return out;
+}
+/* ── 최종합격 → 입사일자 입력 → 근로계약 연계 ── */
+function saveHireDate(){
+  const c=findCand(openId); if(!c) return;
+  const el=document.getElementById("hireDate");
+  if(el) c.hireDate=el.value;
+  // 저장은 확정 시에만 (여기선 임시 보관), 가볍게 save
+  save();
+}
+function hireAndContract(){
+  const c=findCand(openId); if(!c) return;
+  const el=document.getElementById("hireDate");
+  const hd=(el&&el.value)||c.hireDate||todayISO();
+  c.hireDate=hd;
+  save();
+  // 이미 전환된 임직원이 있으면 그 계약으로, 없으면 새로 전환
+  let emp=EMPLOYEES.find(e=>e.fromCandId===c.id);
+  if(!emp){
+    emp=convertCandidateToEmp(c.id, hd);
+  } else {
+    emp.joinDate=hd;
+    if(emp.contract){ emp.contract.periodStart=hd; emp.contract.salaryPeriodStart=hd; }
+    save();
+  }
+  if(!emp) return;
+  // ATS 상세 닫고 → 유지 없이 바로 근로계약 작성으로
+  closeDetail();
+  gotoEmpContract(emp.id);
+}
+function gotoEmpContract(empId){
+  goModule("employees");
+  openEmp(empId, "contract");
+  empEdit=true;
+  renderEmpDetail();
+}
+// convertCandidate의 내부 로직을 함수로 분리(입사일 지정 가능)
+function convertCandidateToEmp(candId, hireDate){
+  let found=null,fj=null;
+  for(const j of JOBS){ const c=(j.cands||[]).find(x=>x.id===candId); if(c){found=c;fj=j;break;} }
+  if(!found) return null;
+  const e=blankEmployee();
+  e.source="ats"; e.fromCandId=found.id;
+  e.name=found.name||""; e.email=found.email||""; e.phone=found.phone||""; e.addr=found.addr||"";
+  e.dept=fj.dept||""; e.position=found.role||"";
+  e.joinDate=hireDate||todayISO();
+  e.contract.periodStart=e.joinDate;
+  e.contract.salaryPeriodStart=e.joinDate;
+  e.contract.jobDuty=fj.title||"";
+  e.contract.workPlace="본사";
+  if(found.hosp && found.hosp!=="—") e.career.push({period:"", company:found.hosp, position:found.role||"", job:""});
+  EMPLOYEES.unshift(e);
+  save();
+  return e;
+}
+
+function convertCandidate(candId){
+  const e=convertCandidateToEmp(candId, todayISO());
+  if(!e) return;
+  renderEmployees();
+  openEmp(e.id,"contract");   // 전환 직후 근로계약 탭으로 바로 이동
+  empEdit=true; renderEmpDetail();
+}
+function todayISO(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+
+/* ── 임직원 등록(직접) ── */
+function openEmpNew(){
+  const e=blankEmployee();
+  e.name="신규 임직원";
+  EMPLOYEES.unshift(e);
+  save();
+  renderEmployees();
+  openEmp(e.id);
+  empEdit=true; edPanel="record"; renderEmpDetail();   // 바로 편집 모드
+}
+
+/* ── 임직원 명부 렌더 ── */
+function renderEmployees(){
+  const grid=document.getElementById("empGrid"); if(!grid) return;
+  const q=(document.getElementById("empQ").value||"").trim().toLowerCase();
+  const conv=eligibleForConversion();
+  let html="";
+  // 전환 대기 배너
+  if(conv.length){
+    html+=`<div style="grid-column:1/-1" class="law-note">🎓 <b>최종 합격자 ${conv.length}명</b>이 임직원 전환을 기다리고 있습니다. 아래에서 전환하세요.</div>`;
+    html+=conv.map(({c,j})=>`
+      <div class="emp-card" style="border-style:dashed;border-color:#B7CDBF;background:#F6FBF8">
+        <div class="ec-top">
+          <div class="emp-avatar" style="background:#E7F4EE;color:#2E8B67">${esc(empInitial(c.name))}</div>
+          <div style="flex:1;min-width:0"><div class="ec-name">${esc(c.name)}</div>
+            <div class="ec-meta">${esc(j.title)} · 최종 합격</div></div>
+        </div>
+        <div class="ec-body"><button class="btn" style="width:100%;justify-content:center" onclick="convertCandidate(${c.id})">→ 임직원으로 전환</button></div>
+      </div>`).join("");
+  }
+  const list=EMPLOYEES.filter(e=>{
+    if(q) return (e.name+" "+e.dept+" "+e.position).toLowerCase().includes(q);
+    return true;
+  });
+  if(!list.length && !conv.length){
+    grid.innerHTML=`<div class="emp-empty" style="grid-column:1/-1">아직 등록된 임직원이 없습니다.<br>ATS 최종 합격자를 전환하거나, 우측 상단 <b>임직원 등록</b>으로 추가하세요.</div>`;
+    return;
+  }
+  html+=list.map(e=>{
+    const srcBadge=e.source==="ats"?`<span class="ec-src" style="color:#2E8B67;background:#E7F4EE">ATS 전환</span>`:`<span class="ec-src" style="color:#2C6FB0;background:#E7F0F9">직접 등록</span>`;
+    const st=e.status==="leave"?`<span class="emp-status" style="color:#B23A22;background:#F6E6E2">퇴사</span>`:`<span class="emp-status" style="color:#2E8B67;background:#E7F4EE">재직</span>`;
+    return `<div class="emp-card" onclick="openEmp(${e.id})">
+      <div class="ec-top">
+        <div class="emp-avatar">${esc(empInitial(e.name))}</div>
+        <div style="flex:1;min-width:0"><div class="ec-name">${esc(e.name||"(이름 미입력)")}</div>
+          <div class="ec-meta">${esc(e.dept||"부서 미정")} · ${esc(e.position||"직위 미정")}</div></div>
+        ${srcBadge}
+      </div>
+      <div class="ec-body">
+        ${st}
+        ${e.joinDate?`<span class="emp-status" style="color:var(--muted);background:#EEF1F4">입사 ${esc(e.joinDate)}</span>`:""}
+        ${e.contract&&e.contract.wageAnnual?`<span class="emp-status" style="color:var(--muted);background:#EEF1F4">연봉 ${esc(fmtMoney(e.contract.wageAnnual))}</span>`:""}
+      </div>
+    </div>`;
+  }).join("");
+  grid.innerHTML=html;
+}
+function fmtMoney(v){
+  const n=parseInt(String(v).replace(/[^\d]/g,""));
+  if(!n) return String(v||"");
+  return n.toLocaleString("ko-KR")+"원";
+}
+
+/* ── 근로계약 목록 / 노무 목록 (임직원 재사용) ── */
+function renderContractList(){
+  const grid=document.getElementById("conGrid"); if(!grid) return;
+  const q=(document.getElementById("conQ").value||"").trim().toLowerCase();
+  const list=EMPLOYEES.filter(e=>!q||(e.name+" "+e.dept).toLowerCase().includes(q));
+  if(!list.length){ grid.innerHTML=`<div class="emp-empty" style="grid-column:1/-1">임직원을 먼저 등록하면 근로계약을 작성할 수 있습니다.</div>`; return; }
+  grid.innerHTML=list.map(e=>{
+    const c=e.contract||{};
+    const done=c.wageAnnual&&c.periodType;
+    return `<div class="emp-card" onclick="openEmp(${e.id},'contract')">
+      <div class="ec-top"><div class="emp-avatar">${esc(empInitial(e.name))}</div>
+        <div style="flex:1;min-width:0"><div class="ec-name">${esc(e.name)}</div><div class="ec-meta">${esc(e.dept||"—")} · ${esc(e.position||"—")}</div></div>
+        ${done?`<span class="ec-src" style="color:#2E8B67;background:#E7F4EE">작성완료</span>`:`<span class="ec-src" style="color:#C0842D;background:#FBF1E0">미작성</span>`}
+      </div>
+      <div class="ec-body">
+        ${c.wageAnnual?`<span class="emp-status" style="color:var(--muted);background:#EEF1F4">연봉 ${esc(fmtMoney(c.wageAnnual))}</span>`:""}
+        ${c.periodType?`<span class="emp-status" style="color:var(--muted);background:#EEF1F4">${esc(c.periodType)}</span>`:""}
+      </div></div>`;
+  }).join("");
+}
+function renderLaborList(){
+  const grid=document.getElementById("labGrid"); if(!grid) return;
+  const q=(document.getElementById("labQ").value||"").trim().toLowerCase();
+  const list=EMPLOYEES.filter(e=>!q||(e.name+" "+e.dept).toLowerCase().includes(q));
+  if(!list.length){ grid.innerHTML=`<div class="emp-empty" style="grid-column:1/-1">임직원을 먼저 등록하면 노무 정보를 관리할 수 있습니다.</div>`; return; }
+  grid.innerHTML=list.map(e=>{
+    const l=e.labor||{};
+    const tc=(l.transfers||[]).length;
+    return `<div class="emp-card" onclick="openEmp(${e.id},'labor')">
+      <div class="ec-top"><div class="emp-avatar">${esc(empInitial(e.name))}</div>
+        <div style="flex:1;min-width:0"><div class="ec-name">${esc(e.name)}</div><div class="ec-meta">${esc(e.dept||"—")} · ${esc(e.position||"—")}</div></div>
+      </div>
+      <div class="ec-body">
+        <span class="emp-status" style="color:var(--muted);background:#EEF1F4">전직발령 ${tc}건</span>
+        ${l.unionJoined?`<span class="emp-status" style="color:#2C6FB0;background:#E7F0F9">노조 ${esc(l.unionName||"가입")}</span>`:`<span class="emp-status" style="color:var(--muted);background:#EEF1F4">노조 미가입</span>`}
+      </div></div>`;
+  }).join("");
+}
+
+/* ── 임직원 상세 오버레이 ── */
+function openEmp(id, panel){
+  openEmpId=id; empEdit=false; edPanel=panel||"record";
+  renderEmpDetail();
+  document.getElementById("empDetail").classList.add("show");
+}
+function closeEmpDetail(){
+  openEmpId=null; document.getElementById("empDetail").classList.remove("show");
+  renderEmployees(); renderContractList(); renderLaborList();
+}
+function toggleEmpEdit(){ empEdit=!empEdit; renderEmpDetail(); }
+function edTab(p){ edPanel=p; renderEmpDetail(); }
+
+function renderEmpDetail(){
+  const e=findEmp(openEmpId); if(!e) return;
+  document.getElementById("edAvatar").textContent=empInitial(e.name);
+  document.getElementById("edName").textContent=e.name||"(이름 미입력)";
+  document.getElementById("edSub").textContent=`${e.dept||"부서 미정"} · ${e.position||"직위 미정"}`+(e.source==="ats"?" · ATS 전환":" · 직접 등록");
+  const badge=document.getElementById("edEditBadge"), btn=document.getElementById("edEditBtn");
+  badge.textContent=empEdit?"수정 중":"읽기 전용"; badge.className="edit-badge "+(empEdit?"edit":"view");
+  btn.textContent=empEdit?"✓ 저장":"✎ 수정";
+  btn.onclick=empEdit?saveEmpEdit:toggleEmpEdit;
+  // 탭 활성
+  document.querySelectorAll("#edTabs .ed-tab").forEach(t=>t.classList.toggle("on", t.getAttribute("data-panel")===edPanel));
+  const body=document.getElementById("edBody");
+  if(edPanel==="record") body.innerHTML=renderRecordCard(e);
+  else if(edPanel==="contract") body.innerHTML=renderContract(e);
+  else body.innerHTML=renderLabor(e);
+}
+
+const D=(on)=>on?"":"disabled";   // 편집 아니면 disabled
+function val(v){ return esc(v==null?"":v); }
+
+/* ── 패널 1: 인사기록카드 ── */
+function renderRecordCard(e){
+  const on=empEdit;
+  const eduRows=(e.education||[]).map((r,i)=>`<tr>
+    <td><input ${D(on)} value="${val(r.enter)}" onchange="empRow('education',${i},'enter',this.value)" placeholder="입학"></td>
+    <td><input ${D(on)} value="${val(r.graduate)}" onchange="empRow('education',${i},'graduate',this.value)" placeholder="졸업"></td>
+    <td><input ${D(on)} value="${val(r.school)}" onchange="empRow('education',${i},'school',this.value)" placeholder="학교명"></td>
+    <td><input ${D(on)} value="${val(r.major)}" onchange="empRow('education',${i},'major',this.value)" placeholder="학과"></td>
+    <td><input ${D(on)} value="${val(r.region)}" onchange="empRow('education',${i},'region',this.value)" placeholder="소재지"></td>
+    ${on?`<td><button class="row-del" onclick="empRowDel('education',${i})">×</button></td>`:""}
+  </tr>`).join("");
+  const carRows=(e.career||[]).map((r,i)=>`<tr>
+    <td><input ${D(on)} value="${val(r.period)}" onchange="empRow('career',${i},'period',this.value)" placeholder="재직기간"></td>
+    <td><input ${D(on)} value="${val(r.company)}" onchange="empRow('career',${i},'company',this.value)" placeholder="직장명"></td>
+    <td><input ${D(on)} value="${val(r.position)}" onchange="empRow('career',${i},'position',this.value)" placeholder="직위"></td>
+    <td><input ${D(on)} value="${val(r.job)}" onchange="empRow('career',${i},'job',this.value)" placeholder="담당업무"></td>
+    ${on?`<td><button class="row-del" onclick="empRowDel('career',${i})">×</button></td>`:""}
+  </tr>`).join("");
+  const certRows=(e.certs||[]).map((r,i)=>`<tr>
+    <td><input ${D(on)} value="${val(r.name)}" onchange="empRow('certs',${i},'name',this.value)" placeholder="종류"></td>
+    <td><input ${D(on)} value="${val(r.score)}" onchange="empRow('certs',${i},'score',this.value)" placeholder="성적/급수"></td>
+    <td><input ${D(on)} value="${val(r.date)}" onchange="empRow('certs',${i},'date',this.value)" placeholder="취득일"></td>
+    <td><input ${D(on)} value="${val(r.issuer)}" onchange="empRow('certs',${i},'issuer',this.value)" placeholder="발급기관"></td>
+    ${on?`<td><button class="row-del" onclick="empRowDel('certs',${i})">×</button></td>`:""}
+  </tr>`).join("");
+  const famRows=(e.family||[]).map((r,i)=>`<tr>
+    <td><input ${D(on)} value="${val(r.relation)}" onchange="empRow('family',${i},'relation',this.value)" placeholder="관계"></td>
+    <td><input ${D(on)} value="${val(r.name)}" onchange="empRow('family',${i},'name',this.value)" placeholder="성명"></td>
+    <td><input ${D(on)} value="${val(r.age)}" onchange="empRow('family',${i},'age',this.value)" placeholder="나이"></td>
+    <td><input ${D(on)} value="${val(r.birth)}" onchange="empRow('family',${i},'birth',this.value)" placeholder="생년월일"></td>
+    ${on?`<td><button class="row-del" onclick="empRowDel('family',${i})">×</button></td>`:""}
+  </tr>`).join("");
+  const mil=e.military||{};
+  const docs=e.docs||{};
+  const docRows=DOC_LIST.map(d=>`<label class="doc-row ${docs[d.k]?'done':''}">
+    <input type="checkbox" ${docs[d.k]?"checked":""} ${D(on)} onchange="empDoc('${d.k}',this.checked)">
+    <span class="dr-name">${d.n}</span>${docs[d.k]?'<span class="dr-note">확인</span>':''}
+  </label>`).join("");
+
+  return `
+  <div class="rc-sec"><h3>기본 인적사항 <span class="badge">인사기록카드</span></h3>
+    <div class="fg c3">
+      <div class="fld"><label>성명</label><input ${D(on)} value="${val(e.name)}" onchange="empField('name',this.value)"></div>
+      <div class="fld"><label>영문이름</label><input ${D(on)} value="${val(e.engName)}" onchange="empField('engName',this.value)"></div>
+      <div class="fld"><label>생년월일</label><input ${D(on)} type="text" value="${val(e.birth)}" onchange="empField('birth',this.value)" placeholder="YYYY-MM-DD"></div>
+      <div class="fld"><label>성별</label>${on?`<select onchange="empField('gender',this.value)"><option ${e.gender==="남"?"selected":""}>남</option><option ${e.gender==="여"?"selected":""}>여</option><option ${!e.gender?"selected":""} value="">-</option></select>`:`<div class="ro">${val(e.gender)||"—"}</div>`}</div>
+      <div class="fld"><label>부서</label><input ${D(on)} value="${val(e.dept)}" onchange="empField('dept',this.value)"></div>
+      <div class="fld"><label>직위</label><input ${D(on)} value="${val(e.position)}" onchange="empField('position',this.value)"></div>
+      <div class="fld"><label>입사일자</label><input ${D(on)} type="text" value="${val(e.joinDate)}" onchange="empField('joinDate',this.value)" placeholder="YYYY-MM-DD"></div>
+      <div class="fld"><label>퇴사일자</label><input ${D(on)} type="text" value="${val(e.leaveDate)}" onchange="empField('leaveDate',this.value)" placeholder="재직 중이면 비움"></div>
+      <div class="fld"><label>재직상태</label>${on?`<select onchange="empField('status',this.value)"><option value="active" ${e.status!=="leave"?"selected":""}>재직</option><option value="leave" ${e.status==="leave"?"selected":""}>퇴사</option></select>`:`<div class="ro">${e.status==="leave"?"퇴사":"재직"}</div>`}</div>
+      <div class="fld full"><label>현주소</label><input ${D(on)} value="${val(e.addr)}" onchange="empField('addr',this.value)"></div>
+      <div class="fld"><label>개인이메일</label><input ${D(on)} value="${val(e.email)}" onchange="empField('email',this.value)"></div>
+      <div class="fld"><label>전화번호</label><input ${D(on)} value="${val(e.phone)}" onchange="empField('phone',this.value)"></div>
+      <div class="fld"><label>비상연락처</label><input ${D(on)} value="${val(e.emgContact)}" onchange="empField('emgContact',this.value)"></div>
+      <div class="fld"><label>비상연락 관계</label><input ${D(on)} value="${val(e.emgRelation)}" onchange="empField('emgRelation',this.value)" placeholder="예: 부, 모, 배우자"></div>
+    </div>
+  </div>
+
+  <div class="rc-sec"><h3>학력</h3>
+    <div class="rtable"><table><thead><tr><th>입학</th><th>졸업</th><th>학교명</th><th>학과</th><th>소재지</th>${on?"<th></th>":""}</tr></thead>
+      <tbody>${eduRows||`<tr><td colspan="${on?6:5}" style="color:var(--faint);text-align:center;padding:12px">입력된 학력이 없습니다</td></tr>`}</tbody></table></div>
+    ${on?`<button class="rtable-add" onclick="empRowAdd('education')">+ 학력 추가</button>`:""}
+  </div>
+
+  <div class="rc-sec"><h3>경력</h3>
+    <div class="rtable"><table><thead><tr><th>재직기간</th><th>직장명</th><th>직위</th><th>담당업무</th>${on?"<th></th>":""}</tr></thead>
+      <tbody>${carRows||`<tr><td colspan="${on?5:4}" style="color:var(--faint);text-align:center;padding:12px">입력된 경력이 없습니다</td></tr>`}</tbody></table></div>
+    ${on?`<button class="rtable-add" onclick="empRowAdd('career')">+ 경력 추가</button>`:""}
+  </div>
+
+  <div class="rc-sec"><h3>자격사항</h3>
+    <div class="rtable"><table><thead><tr><th>종류</th><th>성적/급수</th><th>취득일</th><th>발급기관</th>${on?"<th></th>":""}</tr></thead>
+      <tbody>${certRows||`<tr><td colspan="${on?5:4}" style="color:var(--faint);text-align:center;padding:12px">입력된 자격이 없습니다</td></tr>`}</tbody></table></div>
+    ${on?`<button class="rtable-add" onclick="empRowAdd('certs')">+ 자격 추가</button>`:""}
+  </div>
+
+  <div class="rc-sec"><h3>병역사항</h3>
+    <div class="fg c4">
+      <div class="fld"><label>구분</label>${on?`<select onchange="empMil('status',this.value)"><option ${mil.status==="군필"?"selected":""}>군필</option><option ${mil.status==="면제"?"selected":""}>면제</option><option ${mil.status==="해당없음"||!mil.status?"selected":""}>해당없음</option></select>`:`<div class="ro">${val(mil.status)||"—"}</div>`}</div>
+      <div class="fld"><label>군별/병과</label><input ${D(on)} value="${val(mil.branch)}" onchange="empMil('branch',this.value)"></div>
+      <div class="fld"><label>병과</label><input ${D(on)} value="${val(mil.mos)}" onchange="empMil('mos',this.value)"></div>
+      <div class="fld"><label>복무기간</label><input ${D(on)} value="${val(mil.period)}" onchange="empMil('period',this.value)"></div>
+    </div>
+  </div>
+
+  <div class="rc-sec"><h3>가족사항</h3>
+    <div class="rtable"><table><thead><tr><th>관계</th><th>성명</th><th>나이</th><th>생년월일</th>${on?"<th></th>":""}</tr></thead>
+      <tbody>${famRows||`<tr><td colspan="${on?5:4}" style="color:var(--faint);text-align:center;padding:12px">입력된 가족이 없습니다</td></tr>`}</tbody></table></div>
+    ${on?`<button class="rtable-add" onclick="empRowAdd('family')">+ 가족 추가</button>`:""}
+  </div>
+
+  <div class="rc-sec"><h3>입사 구비서류</h3>
+    ${docRows}
+  </div>
+
+  ${on?"":`<div style="text-align:center;padding:8px 0 20px"><button class="btn danger" onclick="deleteEmp()">🗑 이 임직원 삭제 (되돌릴 수 없음)</button></div>`}
+  `;
+}
+
+/* ── 패널 2: 근로계약 (근로기준법 제17조 · 첨부 계약서 기준) ── */
+function migrateContract(e){
+  // 구형 계약(개별 필드)을 신형(wageItems 배열)으로 1회 마이그레이션
+  const c=e.contract||(e.contract={});
+  if(!Array.isArray(c.wageItems)){
+    c.wageItems=[
+      {label:"기본급", amount:c.wageBase||"", note:"월 소정근로 209시간 (주휴수당 포함)"},
+      {label:"고정연장근로수당", amount:c.wageFixedOT||"", note:"통상시급 × 월 연장근로 × 1.5"},
+      {label:"고정야간근로수당", amount:c.wageNight||"", note:"통상시급 × 월 야간근로 × 0.5"},
+      {label:"고정휴일근로수당", amount:c.wageHoliday||"", note:"통상시급 × 월 휴일근로 × 1.5"},
+      {label:"연차수당", amount:c.wageAnnualPay||"", note:"통상시급 × 8시간"},
+      {label:"복리후생비", amount:c.welfare||"", note:"해당자에 한함"},
+      {label:"식대", amount:c.meal||"", note:"해당자에 한함"}
+    ];
+  }
+  if(c.empName===undefined) c.empName="";
+  if(c.empCeo===undefined) c.empCeo="";
+  if(c.empAddr===undefined) c.empAddr="";
+  if(c.probation===undefined) c.probation="3개월";
+  if(c.salaryPeriodStart===undefined) c.salaryPeriodStart="";
+  if(c.salaryPeriodEnd===undefined) c.salaryPeriodEnd="";
+  return c;
+}
+function renderContract(e){
+  const on=empEdit; const c=migrateContract(e);
+  const wageRows=(c.wageItems||[]).map((w,i)=>`<tr>
+    <td style="width:32%"><input ${D(on)} value="${val(w.label)}" onchange="wageItem(${i},'label',this.value)" placeholder="급여 항목명"></td>
+    <td style="width:22%"><input ${D(on)} value="${val(w.amount)}" onchange="wageItem(${i},'amount',this.value)" placeholder="금액(원)" inputmode="numeric"></td>
+    <td><input ${D(on)} value="${val(w.note)}" onchange="wageItem(${i},'note',this.value)" placeholder="산출 근거·비고"></td>
+    ${on?`<td><button class="row-del" onclick="wageItemDel(${i})">×</button></td>`:""}
+  </tr>`).join("");
+  const wageSum=(c.wageItems||[]).reduce((s,w)=>s+(parseInt(String(w.amount).replace(/[^\d]/g,""))||0),0);
+
+  return `
+  <div class="law-note">📖 <b>근로기준법 제17조</b> 명시사항입니다. ①임금(구성·계산·지급) ②소정근로시간 ③휴일 ④연차유급휴가는 서면 명시·교부 의무 대상입니다. 아래 정보를 입력하고 <b>근로계약서 생성</b>을 누르면 계약서가 만들어집니다.</div>
+
+  <div class="rc-sec"><h3>사용자(갑) · 회사 정보</h3>
+    <div class="fg c3">
+      <div class="fld"><label>상호</label><input ${D(on)} value="${val(c.empName)}" onchange="empCon('empName',this.value)" placeholder="예: ㈜킥더허들"></div>
+      <div class="fld"><label>대표자</label><input ${D(on)} value="${val(c.empCeo)}" onchange="empCon('empCeo',this.value)" placeholder="예: 김태양"></div>
+      <div class="fld"><label>&nbsp;</label><div style="font-size:11px;color:var(--faint);padding-top:9px">근로자(을) 정보는 인사기록카드에서 자동 연계됩니다.</div></div>
+      <div class="fld full"><label>회사 주소</label><input ${D(on)} value="${val(c.empAddr)}" onchange="empCon('empAddr',this.value)" placeholder="예: 경상남도 창원시 의창구 …"></div>
+    </div>
+  </div>
+
+  <div class="rc-sec"><h3>계약기간 · 근무조건</h3>
+    <div class="fg c3">
+      <div class="fld"><label>근로계약 형태</label>${on?`<select onchange="empCon('periodType',this.value)">
+        <option ${c.periodType&&c.periodType.includes("없음")?"selected":""}>기간의 정함이 없음(정규직)</option>
+        <option ${c.periodType&&c.periodType.includes("기간제")?"selected":""}>기간제(계약직)</option></select>`:`<div class="ro">${val(c.periodType)||"—"}</div>`}</div>
+      <div class="fld"><label>입사일자 / 계약 시작</label><input ${D(on)} value="${val(c.periodStart)}" onchange="empCon('periodStart',this.value)" placeholder="YYYY-MM-DD"></div>
+      <div class="fld"><label>계약 종료일</label><input ${D(on)} value="${val(c.periodEnd)}" onchange="empCon('periodEnd',this.value)" placeholder="정규직이면 비움"></div>
+      <div class="fld"><label>연봉계약 시작</label><input ${D(on)} value="${val(c.salaryPeriodStart)}" onchange="empCon('salaryPeriodStart',this.value)" placeholder="YYYY-MM-DD"></div>
+      <div class="fld"><label>연봉계약 종료</label><input ${D(on)} value="${val(c.salaryPeriodEnd)}" onchange="empCon('salaryPeriodEnd',this.value)" placeholder="YYYY-MM-DD"></div>
+      <div class="fld"><label>수습기간</label><input ${D(on)} value="${val(c.probation)}" onchange="empCon('probation',this.value)" placeholder="예: 3개월"></div>
+      <div class="fld full"><label>근무장소</label><input ${D(on)} value="${val(c.workPlace)}" onchange="empCon('workPlace',this.value)" placeholder="예: 갑의 사업장(본사)"></div>
+      <div class="fld full"><label>담당업무(직무)</label><input ${D(on)} value="${val(c.jobDuty)}" onchange="empCon('jobDuty',this.value)" placeholder="예: 인사/총무 관련 제반업무"></div>
+    </div>
+  </div>
+
+  <div class="rc-sec"><h3>② 소정근로시간 <span class="badge">제17조 2호</span></h3>
+    <div class="fg c4">
+      <div class="fld"><label>근무일</label><input ${D(on)} value="${val(c.workDays)}" onchange="empCon('workDays',this.value)"></div>
+      <div class="fld"><label>시업시간</label><input ${D(on)} value="${val(c.workStart)}" onchange="empCon('workStart',this.value)"></div>
+      <div class="fld"><label>종업시간</label><input ${D(on)} value="${val(c.workEnd)}" onchange="empCon('workEnd',this.value)"></div>
+      <div class="fld"><label>휴게시간</label><input ${D(on)} value="${val(c.breakTime)}" onchange="empCon('breakTime',this.value)"></div>
+    </div>
+  </div>
+
+  <div class="rc-sec"><h3>③ 휴일 · ④ 연차유급휴가 <span class="badge">제17조 3·4호</span></h3>
+    <div class="fg">
+      <div class="fld full"><label>휴일 (제55조)</label><input ${D(on)} value="${val(c.holiday)}" onchange="empCon('holiday',this.value)"></div>
+      <div class="fld full"><label>연차유급휴가 (제60조)</label><input ${D(on)} value="${val(c.annualLeave)}" onchange="empCon('annualLeave',this.value)"></div>
+    </div>
+  </div>
+
+  <div class="rc-sec"><h3>① 임금 및 수당 <span class="badge">제17조 1호</span></h3>
+    <div class="fg" style="margin-bottom:14px">
+      <div class="fld"><label>월 급여(원)</label><input ${D(on)} value="${val(c.wageMonthly)}" onchange="empCon('wageMonthly',this.value)" placeholder="예: 5500000"></div>
+      <div class="fld"><label>연봉(원)</label><input ${D(on)} value="${val(c.wageAnnual)}" onchange="empCon('wageAnnual',this.value)" placeholder="예: 66000000"></div>
+    </div>
+    <label style="font-size:11px;font-weight:800;color:var(--faint);display:block;margin-bottom:6px">월 고정급여 산출내역 (항목 자유 추가·삭제)</label>
+    <div class="rtable"><table><thead><tr><th>급여 항목</th><th>금액(원)</th><th>산출 근거·비고</th>${on?"<th></th>":""}</tr></thead>
+      <tbody>${wageRows||`<tr><td colspan="${on?4:3}" style="color:var(--faint);text-align:center;padding:12px">급여 항목이 없습니다</td></tr>`}
+      <tr style="background:#F3F6F9;font-weight:800"><td>합계</td><td colspan="${on?3:2}">${fmtMoney(String(wageSum))} ${c.wageMonthly&&wageSum&&wageSum!=parseInt(String(c.wageMonthly).replace(/[^\d]/g,''))?`<span style="font-weight:600;color:#C0842D;font-size:11px">· 월급여와 차이 있음</span>`:""}</td></tr>
+      </tbody></table></div>
+    ${on?`<button class="rtable-add" onclick="wageItemAdd()">+ 급여 항목 추가</button>`:""}
+  </div>
+
+  <div class="rc-sec" style="background:var(--primary-soft);border-color:#D5E0EC">
+    <h3 style="margin-bottom:10px">📄 근로계약서 생성</h3>
+    <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:14px">
+      위에 입력한 정보로 근로계약서를 생성합니다. 생성된 계약서는 화면에서 확인하고 <b>인쇄 · PDF 저장</b>할 수 있습니다.
+    </div>
+    <button class="btn" style="width:100%;justify-content:center" onclick="openContractDoc()">📄 근로계약서 생성 · 미리보기</button>
+  </div>
+
+  <div class="rc-sec"><h3>계약서 원본 파일 첨부 (선택)</h3>
+    ${e.contractFileUrl?`<div style="margin-bottom:10px"><a href="${e.contractFileUrl}" target="_blank" class="btn ghost" style="text-decoration:none">📎 ${esc(e.contractFileName||"계약서")} 열기 ☁</a></div>`:`<div style="font-size:12px;color:var(--faint);margin-bottom:10px">서명·날인된 계약서 스캔본을 보관하려면 첨부하세요.</div>`}
+    ${on?`<input type="file" accept=".pdf,.jpg,.jpeg,.png" onchange="empContractFile(this.files[0])">`:""}
+  </div>
+  `;
+}
+
+/* 동적 급여항목 핸들러 */
+function wageItem(i,k,v){ const e=findEmp(openEmpId); if(e&&e.contract&&e.contract.wageItems[i]){ e.contract.wageItems[i][k]=v; } }
+function wageItemAdd(){ const e=findEmp(openEmpId); if(e){ e.contract=migrateContract(e); e.contract.wageItems.push({label:"",amount:"",note:""}); save(); renderEmpDetail(); } }
+function wageItemDel(i){ const e=findEmp(openEmpId); if(e&&e.contract&&e.contract.wageItems){ e.contract.wageItems.splice(i,1); save(); renderEmpDetail(); } }
+
+/* ── 근로계약서 생성 · 미리보기 · 인쇄 ── */
+function fmtDateK(s){
+  if(!s) return "20     년      월      일";
+  const m=String(s).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if(m) return `${m[1]}년 ${m[2]}월 ${m[3]}일`;
+  return s;
+}
+function moneyN(v){ const n=parseInt(String(v||"").replace(/[^\d]/g,"")); return n?n.toLocaleString("ko-KR"):"-"; }
+function openContractDoc(){
+  const e=findEmp(openEmpId); if(!e){ return; }
+  const c=migrateContract(e);
+  document.getElementById("contractPaper").innerHTML=buildContractHTML(e,c);
+  document.getElementById("contractDocOverlay").classList.add("show");
+}
+function closeContractDoc(){ document.getElementById("contractDocOverlay").classList.remove("show"); }
+function printContractDoc(){ window.print(); }
+
+function buildContractHTML(e,c){
+  const periodLine = c.periodType && c.periodType.includes("없음")
+    ? `${fmtDateK(c.periodStart)} ~ 기간의 정함이 없음으로 한다.`
+    : `${fmtDateK(c.periodStart)} ~ ${fmtDateK(c.periodEnd)}`;
+  const salaryLine = (c.salaryPeriodStart||c.salaryPeriodEnd)
+    ? `${fmtDateK(c.salaryPeriodStart)} ~ ${fmtDateK(c.salaryPeriodEnd)}` : "—";
+  const wageRows=(c.wageItems||[]).filter(w=>w.label||w.amount).map(w=>`
+    <tr><td class="lbl2">${esc(w.label||"")}</td>
+      <td class="ctr" style="width:130px">${moneyN(w.amount)} 원</td>
+      <td class="kd-note">${esc(w.note||"")}</td></tr>`).join("");
+  const signDate = c.periodStart ? fmtDateK(c.periodStart) : fmtDateK(todayISO());
+
+  return `
+  <div class="kd-title">근 로 계 약 서</div>
+  <table class="kd-table">
+    <tr>
+      <td class="kd-sec-lbl" rowspan="2">사용자<br>(갑)</td>
+      <td class="lbl">상 호</td><td>${esc(c.empName||"")}</td>
+      <td class="lbl">대 표 자</td><td>${esc(c.empCeo||"")}</td>
+    </tr>
+    <tr>
+      <td class="lbl">주 소</td><td colspan="3">${esc(c.empAddr||"")}</td>
+    </tr>
+    <tr>
+      <td class="kd-sec-lbl" rowspan="2">근로자<br>(을)</td>
+      <td class="lbl">성 명</td><td>${esc(e.name||"")}</td>
+      <td class="lbl">생년월일</td><td>${esc(e.birth||"")}</td>
+    </tr>
+    <tr>
+      <td class="lbl">주 소</td><td>${esc(e.addr||"")}</td>
+      <td class="lbl">연 락 처</td><td>${esc(e.phone||"")}</td>
+    </tr>
+    <tr><td colspan="5" class="ctr" style="padding:7px">위 당사자는 아래의 근로조건을 성실히 이행할 것을 약정하고 근로계약을 체결한다.</td></tr>
+    <tr>
+      <td class="lbl">근로계약기간</td><td colspan="2">${periodLine}</td>
+      <td class="lbl">연봉계약기간</td><td>${salaryLine}</td>
+    </tr>
+    <tr>
+      <td class="lbl">수 습 기 간</td><td colspan="4">${esc(c.probation||"—")}</td>
+    </tr>
+    <tr>
+      <td class="lbl">근무일 및 휴일</td>
+      <td colspan="4" class="kd-note">
+        ① 근무일은 ${esc(c.workDays||"주5일(월~금)")}을 원칙으로 한다.<br>
+        ② ${esc(c.holiday||"주휴일: 일요일 (주 1회 유급)")}<br>
+        ③ 휴일은 근로자의 날 및 관공서 공휴일로 한다.
+      </td>
+    </tr>
+    <tr>
+      <td class="lbl">근로시간 및<br>휴게시간</td>
+      <td colspan="4" style="padding:0">
+        <table style="width:100%;border-collapse:collapse">
+          <tr>
+            <th class="kd-wage" style="border:1px solid #333;padding:4px">근무일</th>
+            <th class="kd-wage" style="border:1px solid #333;padding:4px">시업시간</th>
+            <th class="kd-wage" style="border:1px solid #333;padding:4px">종업시간</th>
+            <th class="kd-wage" style="border:1px solid #333;padding:4px">휴게시간</th>
+          </tr>
+          <tr>
+            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.workDays||"주5일(월~금)")}</td>
+            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.workStart||"09:00")}</td>
+            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.workEnd||"18:00")}</td>
+            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.breakTime||"12:30~13:30")}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td class="lbl">근무장소 및 직무</td>
+      <td colspan="4" class="kd-note">
+        ① 을의 근무장소는 갑의 사업장(${esc(c.workPlace||"본사")}) 및 관련시설로 하며, 을의 담당 업무는 <b>${esc(c.jobDuty||"—")}</b> 관련 제반업무로 한다.<br>
+        ② 갑은 업무상 필요성이 크고 생활상 불이익이 현저하지 않은 근무 장소·부서·직위 및 담당 업무를 변경할 수 있다.
+      </td>
+    </tr>
+    <tr>
+      <td class="lbl">연차유급휴가</td>
+      <td colspan="4" class="kd-note">${esc(c.annualLeave||"근로기준법 제60조에 따라 부여한다.")}</td>
+    </tr>
+    <tr>
+      <td class="kd-sec-lbl" rowspan="${(c.wageItems||[]).filter(w=>w.label||w.amount).length+2}">임금 및 수당</td>
+      <td class="lbl">월 급 여</td><td class="ctr">${moneyN(c.wageMonthly)} 원</td>
+      <td class="lbl">연 봉</td><td class="ctr">${moneyN(c.wageAnnual)} 원</td>
+    </tr>
+    <tr><td colspan="4" class="ctr" style="background:#EAF0F6;font-weight:700">월 고정 급여 산출 내역</td></tr>
+    ${wageRows||`<tr><td colspan="4" class="ctr" style="color:#888">산출내역 미입력</td></tr>`}
+    <tr>
+      <td class="lbl">임금 지급</td>
+      <td colspan="4" class="kd-note">월 급여는 당월 1일부터 말일까지 근무에 대한 급여를 익월 지정일에 을이 지정하는 통장 계좌로 지급하거나 직접 지급한다.</td>
+    </tr>
+  </table>
+
+  <div class="kd-note" style="margin-top:10px;line-height:1.7">
+    <b>■</b> 을은 상기 내용을 숙지하였고 취업규칙 및 근로조건에 대한 설명을 듣고 희망하였으며, 근로계약서 사본을 교부받았음을 확인한다.
+  </div>
+
+  <div class="kd-sign">
+    <div class="kd-date">${signDate}</div>
+    <div class="kd-sign-row">
+      <div class="kd-sign-col">
+        <div class="sh">(갑)</div>
+        상 호 : ${esc(c.empName||"")}<br>
+        대표자 : ${esc(c.empCeo||"")} &nbsp;&nbsp;(서명 또는 인)
+      </div>
+      <div class="kd-sign-col">
+        <div class="sh">(을)</div>
+        성 명 : ${esc(e.name||"")} &nbsp;&nbsp;(서명 또는 인)<br>
+        생년월일 : ${esc(e.birth||"")}
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+/* ── 패널 3: 노무관리 ── */
+function renderLabor(e){
+  const on=empEdit; const l=e.labor||{transfers:[],unionJoined:false,unionName:""};
+  const trRows=(l.transfers||[]).map((r,i)=>`<tr>
+    <td><input ${D(on)} value="${val(r.date)}" onchange="empTransfer(${i},'date',this.value)" placeholder="YYYY-MM-DD"></td>
+    <td><input ${D(on)} value="${val(r.type)}" onchange="empTransfer(${i},'type',this.value)" placeholder="예: 부서이동/승진/전보"></td>
+    <td><input ${D(on)} value="${val(r.from)}" onchange="empTransfer(${i},'from',this.value)" placeholder="발령 전"></td>
+    <td><input ${D(on)} value="${val(r.to)}" onchange="empTransfer(${i},'to',this.value)" placeholder="발령 후"></td>
+    ${on?`<td><button class="row-del" onclick="empTransferDel(${i})">×</button></td>`:""}
+  </tr>`).join("");
+  return `
+  <div class="rc-sec"><h3>전직발령 내역</h3>
+    <div class="rtable"><table><thead><tr><th>발령일</th><th>구분</th><th>발령 전</th><th>발령 후</th>${on?"<th></th>":""}</tr></thead>
+      <tbody>${trRows||`<tr><td colspan="${on?5:4}" style="color:var(--faint);text-align:center;padding:12px">전직발령 내역이 없습니다</td></tr>`}</tbody></table></div>
+    ${on?`<button class="rtable-add" onclick="empTransferAdd()">+ 발령 추가</button>`:""}
+  </div>
+
+  <div class="rc-sec"><h3>노동조합</h3>
+    <div class="fg">
+      <div class="fld"><label>노동조합 가입 여부</label>${on?`<select onchange="empUnion('joined',this.value)"><option value="no" ${!l.unionJoined?"selected":""}>미가입</option><option value="yes" ${l.unionJoined?"selected":""}>가입</option></select>`:`<div class="ro">${l.unionJoined?"가입":"미가입"}</div>`}</div>
+      <div class="fld"><label>노동조합 명칭</label><input ${D(on)} value="${val(l.unionName)}" onchange="empUnion('name',this.value)" placeholder="${l.unionJoined?'노조 명칭':'(없음)'}"></div>
+    </div>
+  </div>
+  `;
+}
+
+/* ── 임직원 필드 편집 핸들러 ── */
+function empField(k,v){ const e=findEmp(openEmpId); if(e){ e[k]=v; } }
+function empCon(k,v){ const e=findEmp(openEmpId); if(e){ e.contract=e.contract||{}; e.contract[k]=v; } }
+function empMil(k,v){ const e=findEmp(openEmpId); if(e){ e.military=e.military||{}; e.military[k]=v; } }
+function empDoc(k,checked){ const e=findEmp(openEmpId); if(e){ e.docs=e.docs||{}; e.docs[k]=checked; } }
+function empUnion(k,v){ const e=findEmp(openEmpId); if(e){ e.labor=e.labor||{transfers:[]}; if(k==="joined") e.labor.unionJoined=(v==="yes"); else e.labor.unionName=v; } }
+function empRow(arr,i,k,v){ const e=findEmp(openEmpId); if(e&&e[arr]&&e[arr][i]){ e[arr][i][k]=v; } }
+function empRowAdd(arr){ const e=findEmp(openEmpId); if(e){ e[arr]=e[arr]||[]; e[arr].push({}); save(); renderEmpDetail(); } }
+function empRowDel(arr,i){ const e=findEmp(openEmpId); if(e&&e[arr]){ e[arr].splice(i,1); save(); renderEmpDetail(); } }
+function empTransfer(i,k,v){ const e=findEmp(openEmpId); if(e&&e.labor&&e.labor.transfers[i]){ e.labor.transfers[i][k]=v; } }
+function empTransferAdd(){ const e=findEmp(openEmpId); if(e){ e.labor=e.labor||{transfers:[]}; e.labor.transfers=e.labor.transfers||[]; e.labor.transfers.push({}); save(); renderEmpDetail(); } }
+function empTransferDel(i){ const e=findEmp(openEmpId); if(e&&e.labor&&e.labor.transfers){ e.labor.transfers.splice(i,1); save(); renderEmpDetail(); } }
+function empContractFile(f){ const e=findEmp(openEmpId); if(!e||!f) return; const fr=new FileReader(); fr.onload=()=>{ e.contractFileName=f.name; e.contractFileData=fr.result; save(); uploadAndAttachEmp(e,f); }; fr.readAsDataURL(f); }
+async function uploadAndAttachEmp(e,f){ const url=await uploadToStorage(f,"contract"); if(url){ e.contractFileUrl=url; save(); if(openEmpId===e.id) renderEmpDetail(); } }
+
+function saveEmpEdit(){
+  const e=findEmp(openEmpId); if(!e) return;
+  // 재직상태에 따라 퇴사일 표시 정리 (별도 처리 없이 status 필드로 관리)
+  save();
+  empEdit=false;
+  renderEmpDetail();
+  renderEmployees();
+}
+function deleteEmp(){
+  const e=findEmp(openEmpId); if(!e) return;
+  if(!confirm(`'${e.name}' 임직원의 인사기록·근로계약·노무 정보를 모두 삭제할까요?\n되돌릴 수 없습니다.`)) return;
+  EMPLOYEES=EMPLOYEES.filter(x=>x.id!==openEmpId);
+  save(); closeEmpDetail();
+}
+
+// ESC로 임직원 상세도 닫기
+document.addEventListener('keydown',e=>{ if(e.key==="Escape") closeEmpDetail(); });
 
 /* ── init ── */
 if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; }
