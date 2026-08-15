@@ -760,6 +760,8 @@ function renderBoard(){
 }
 function card(c,j){
   const a=analyze(c,j); const r=reapplyInfo(c); const an=(c.analyzed!==false);
+  const sc = c.aiResult ? c.aiResult.score : a.score;
+  const bd = c.aiResult ? (sc>=75?["","#2E8B67","#E7F4EE"]:sc>=55?["","#2C6FB0","#E7F0F9"]:["","#C0842D","#FBF1E0"]) : a.band;
   const rate=[1,2,3,4,5].map(i=>`<i class="${i<=c.rate?'on':''}"></i>`).join("");
   return `<div class="card" draggable="true" onclick="openDetail(${c.id})"
       ondragstart="dragStart(event,${c.id})" ondragend="dragEnd(event)">
@@ -768,7 +770,7 @@ function card(c,j){
     <div class="ct">${(c.tags||[]).slice(0,3).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
     ${r?`<div class="reapply-badge">⚠ ${r.type==='rejected'?'재지원 · 과거 불합격':'중복지원'}</div>`:""}
     <div class="cf">${an
-        ?`<span class="mini-fit" style="color:${a.band[1]};background:${a.band[2]}">적합 ${a.score}</span>`
+        ?`<span class="mini-fit" style="color:${bd[1]};background:${bd[2]}">${c.aiResult?"✦ ":""}적합 ${sc}</span>`
         :`<span class="mini-fit" style="color:var(--faint);background:#EEF1F4">미분석</span>`}
       <span class="rate">${rate}</span><span class="cdate">${c.applied}</span></div>
   </div>`;
@@ -896,21 +898,31 @@ function sideView(c,j){
   const rp=reapplyInfo(c);
   const rejB=c.rejected?`<div class="reapply-banner" style="background:#F1E4E1;border-color:#E0B3A8;color:#8F2E1B">🚫 <b>불합격 처리됨</b> · ${esc(c.rejectStage||"")} 전형 · 사유: ${esc(c.rejectReason||"(미입력)")}</div>`:"";
   const rpB=(!c.rejected&&rp)?`<div class="reapply-banner">⚠ <b>${rp.type==='rejected'?'재지원 감지':'중복지원 감지'}</b> · ${esc(rp.job)} ${rp.stage?esc(rp.stage)+' 전형 ':''}${rp.type==='rejected'?'불합격'+(rp.reason?' ('+esc(rp.reason)+')':''):'지원 중'}</div>`:"";
+  const ai=c.aiResult;
+  const useAI = !!ai;
+  const score = useAI ? ai.score : a.score;
+  const band  = useAI ? (score>=75?["적합도 높음","#2E8B67","#E7F4EE"]:score>=55?["적합도 보통","#2C6FB0","#E7F0F9"]:["적합도 낮음","#C0842D","#FBF1E0"]) : a.band;
+  const strongList = useAI ? (ai.strengths||[]) : a.strong;
+  const weakList   = useAI ? (ai.weaknesses||[]) : a.weak;
   const analysisHtml = (c.analyzed!==false) ? `
     <div class="fit">
-      <div class="fit-top"><span class="fit-score">${a.score}</span><span class="fit-unit">/100</span>
-        <span class="fit-badge" style="color:${a.band[1]};background:${a.band[2]}">${a.band[0]}</span>
-        <button class="edit-btn" style="margin-left:8px" onclick="runAnalysis()">↻ 재분석</button></div>
-      <div class="fit-bar"><i style="width:${a.score}%;background:${a.band[1]}"></i></div>
-      <div class="fit-note">「${esc(j.title)} · ${esc(reqText(j))}」 기준 AI 직무적합성 분석</div>
+      <div class="fit-top"><span class="fit-score">${score}</span><span class="fit-unit">/100</span>
+        <span class="fit-badge" style="color:${band[1]};background:${band[2]}">${band[0]}</span>
+        <button class="edit-btn" style="margin-left:8px" onclick="runAIAnalysis()">↻ 재분석</button></div>
+      <div class="fit-bar"><i style="width:${score}%;background:${band[1]}"></i></div>
+      <div class="fit-note">「${esc(j.title)} · ${esc(reqText(j))}」 기준 ${useAI?"<b>AI 분석</b>":"규칙 기반 분석"}</div>
     </div>
+    ${useAI&&ai.summary?`<div class="ai-box" style="margin-bottom:14px"><div class="lab">✦ AI 종합 평가</div>${esc(ai.summary)}</div>`:""}
     <div class="sw">
-      <div class="col2 pos"><h5>✓ 강점</h5><ul>${a.strong.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
-      <div class="col2 neg"><h5>! 약점</h5><ul>${a.weak.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
-    </div>`
+      <div class="col2 pos"><h5>✓ 강점</h5><ul>${strongList.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
+      <div class="col2 neg"><h5>! 약점</h5><ul>${weakList.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
+    </div>
+    ${useAI&&(ai.questions||[]).length?`<div class="side-sec"><div class="sh"><h4>AI 추천 면접 질문</h4></div>
+      ${ai.questions.map((q,i)=>`<div class="q-ref"><span class="num">Q${i+1}</span><span>${esc(q)}</span></div>`).join("")}</div>`:""}`
   : `<div class="fit" style="text-align:center;padding:20px 14px">
-      <div style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:12px">아직 분석 전입니다.<br>버튼을 누르면 이 지원자의 <b>강점·약점·직무적합도</b>를 분석합니다.</div>
-      <button class="btn" style="width:100%;justify-content:center" onclick="runAnalysis()">✦ AI 직무적합성 분석 실행</button>
+      <div style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:12px">아직 분석 전입니다.<br>버튼을 누르면 AI가 이력서를 읽고 <b>강점·약점·직무적합도·면접질문</b>을 분석합니다.</div>
+      <button class="btn" id="aiBtn" style="width:100%;justify-content:center" onclick="runAIAnalysis()">✦ AI 직무적합성 분석 실행</button>
+      <button class="edit-btn" style="margin-top:8px" onclick="runAnalysis()">AI 없이 간단 분석</button>
     </div>`;
   return rejB+rpB+analysisHtml+`
     <div class="side-sec"><div class="sh"><h4>인적 · 지원 정보</h4>
@@ -969,6 +981,58 @@ function sideEdit(c){
 }
 function startEdit(){editMode=true;renderDetail();}
 function runAnalysis(){const c=findCand(openId);if(!c)return;c.analyzed=true;save();render();renderDetail();}
+
+/* ── 진짜 AI 분석 (Supabase Edge Function → Claude) ── */
+function candidateText(c){
+  const parts=[
+    `이름: ${c.name||""}`,
+    `직무/경력: ${c.role||""}`,
+    `이전 소속: ${c.hosp||""}`,
+    c.addr?`주소: ${c.addr}`:"",
+    (c.tags||[]).length?`보유 역량/자격: ${(c.tags||[]).join(", ")}`:"",
+    (c.hl||[]).length?`이력서 하이라이트:\n- ${(c.hl||[]).join("\n- ")}`:"",
+    c.memo?`평가 메모: ${c.memo}`:"",
+    c.itvTranscript?`면접 녹취록:\n${c.itvTranscript}`:""
+  ].filter(Boolean);
+  return parts.join("\n");
+}
+async function runAIAnalysis(){
+  const c=findCand(openId); if(!c)return;
+  const j=jobOf(openId);
+  const btn=document.getElementById("aiBtn");
+  if(btn){ btn.disabled=true; btn.textContent="AI가 이력서를 읽는 중… (10~20초)"; }
+  setCloud(true,"✦ AI 분석 중…");
+  try{
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/analyze-resume`,{
+      method:"POST",
+      headers:{ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+authToken(), "Content-Type":"application/json" },
+      body: JSON.stringify({ resumeText: candidateText(c), jobTitle: j.title, jobReq: reqText(j) })
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok || data.error){
+      console.warn("AI 분석 실패", res.status, data);
+      setCloud(false,"⚠ AI 분석 실패");
+      alert("AI 분석에 실패했습니다.\n"+(data.error||("HTTP "+res.status))+"\n\n(잠시 후 다시 시도하거나, 아래 '간단 분석'을 이용하세요.)");
+      if(btn){ btn.disabled=false; btn.textContent="✦ AI 직무적합성 분석 실행"; }
+      return;
+    }
+    c.aiResult={
+      score: Math.max(0,Math.min(100, parseInt(data.score)||0)),
+      summary: data.summary||"",
+      strengths: Array.isArray(data.strengths)?data.strengths:[],
+      weaknesses: Array.isArray(data.weaknesses)?data.weaknesses:[],
+      questions: Array.isArray(data.questions)?data.questions:[]
+    };
+    c.analyzed=true;
+    if(c.aiResult.summary) c.ai=c.aiResult.summary;
+    save(); setCloud(true,"☁ 동기화됨"); render(); renderDetail();
+  }catch(e){
+    console.warn("AI 분석 오류",e);
+    setCloud(false,"⚠ AI 분석 오류");
+    alert("AI 분석 중 오류가 발생했습니다: "+e.message);
+    if(btn){ btn.disabled=false; btn.textContent="✦ AI 직무적합성 분석 실행"; }
+  }
+}
 function cancelEdit(){editMode=false;renderDetail();}
 function saveEdit(){
   const c=findCand(openId); if(!c)return;
@@ -1264,9 +1328,46 @@ function scoreAnswer(txt){
 let itvId=null, rec=null, recIdx=-1;
 function openItv(id){
   itvId=id; const c=findCand(id); if(!c)return;
-  if(!c.itvQ||!c.itvQ.length){ c.itvQ=genQuestions(c,jobOf(id)); save(); }
+  if(!c.itvQ||!c.itvQ.length){
+    // AI가 뽑아준 질문이 있으면 그것을 우선 사용
+    const aiQ = c.aiResult && Array.isArray(c.aiResult.questions) ? c.aiResult.questions : [];
+    c.itvQ = aiQ.length ? aiQ.concat(genQuestions(c,jobOf(id)).slice(0,6)) : genQuestions(c,jobOf(id));
+    save();
+  }
   if(typeof c.itvTranscript!=="string") c.itvTranscript="";
   renderItv(); $("#itv").classList.add('show');
+}
+async function aiEvalTranscript(){
+  const c=findCand(itvId); if(!c)return;
+  saveTranscript();
+  const txt=(c.itvTranscript||"").trim();
+  if(!txt){ alert("평가할 녹취록이 없습니다."); return; }
+  const j=jobOf(itvId);
+  const btn=document.getElementById("aiEvalBtn");
+  if(btn){ btn.disabled=true; btn.textContent="AI가 녹취록을 읽는 중… (10~20초)"; }
+  try{
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/analyze-resume`,{
+      method:"POST",
+      headers:{ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+authToken(), "Content-Type":"application/json" },
+      body: JSON.stringify({
+        resumeText: `[지원자] ${c.name} / ${c.role}\n\n[면접 녹취록]\n${txt}`,
+        jobTitle: j.title, jobReq: reqText(j)
+      })
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok || data.error){
+      alert("AI 평가 실패: "+(data.error||("HTTP "+res.status)));
+      if(btn){ btn.disabled=false; btn.textContent="✦ AI 녹취록 평가 실행"; }
+      return;
+    }
+    c.itvEval={ total: Math.max(0,Math.min(100,parseInt(data.score)||0)),
+                comment: data.summary||"", ai:true,
+                strengths:data.strengths||[], weaknesses:data.weaknesses||[] };
+    save(); renderItv();
+  }catch(e){
+    alert("AI 평가 오류: "+e.message);
+    if(btn){ btn.disabled=false; btn.textContent="✦ AI 녹취록 평가 실행"; }
+  }
 }
 function closeItv(){ stopRec(); $("#itv").classList.remove('show'); const id=itvId; itvId=null; if(openId===id) renderDetail(); }
 function regenQ(){
@@ -1330,12 +1431,17 @@ function renderItv(){
     <textarea id="transcript" class="transcript" placeholder="녹음 버튼을 누르면 말하는 내용이 여기에 실시간으로 쌓입니다. 직접 입력·수정도 가능합니다." onchange="saveTranscript()">${esc(c.itvTranscript||"")}</textarea>
   </div>`;
   if(c.itvEval){
+    const isAI=!!c.itvEval.ai;
     html+=`<div class="itv-summary">
-      <div style="font-size:10.5px;font-weight:800;color:#6D51C4;margin-bottom:4px">✦ 면접 답변 평가 (데모 · 규칙 기반)</div>
+      <div style="font-size:10.5px;font-weight:800;color:#6D51C4;margin-bottom:4px">✦ 면접 답변 평가 ${isAI?"(AI 분석)":"(데모 · 규칙 기반)"}</div>
       <span class="big">${c.itvEval.total}</span><span style="color:var(--faint);font-weight:700"> /100</span>
-      <div class="fit-note" style="margin-top:6px">${esc(c.itvEval.comment)}${c.itvEval.note?" · "+esc(c.itvEval.note):""}</div></div>`;
+      <div class="fit-note" style="margin-top:6px">${esc(c.itvEval.comment)}${c.itvEval.note?" · "+esc(c.itvEval.note):""}</div>
+      ${isAI&&(c.itvEval.strengths||[]).length?`<div style="margin-top:10px;font-size:11.5px;color:#2E8B67"><b>강점</b> · ${(c.itvEval.strengths||[]).map(esc).join(" / ")}</div>`:""}
+      ${isAI&&(c.itvEval.weaknesses||[]).length?`<div style="margin-top:4px;font-size:11.5px;color:#C0492D"><b>보완</b> · ${(c.itvEval.weaknesses||[]).map(esc).join(" / ")}</div>`:""}
+      </div>`;
   }
-  html+=`<button class="btn" style="width:100%;justify-content:center;margin:6px 0 18px" onclick="evaluateItv()">✦ AI 녹취록 평가 실행 (규칙 기반)</button>`;
+  html+=`<button class="btn" id="aiEvalBtn" style="width:100%;justify-content:center;margin:6px 0 8px" onclick="aiEvalTranscript()">✦ AI 녹취록 평가 실행</button>`;
+  html+=`<button class="edit-btn" style="width:100%;margin-bottom:18px" onclick="evaluateItv()">AI 없이 간단 평가</button>`;
   html+=`<div class="q-ref-title">면접 질문지 (참고 · 순서대로 질문하세요)</div>`;
   c.itvQ.forEach((q,i)=>{ html+=`<div class="q-ref"><span class="num">Q${i+1}</span><span>${esc(q)}</span></div>`; });
   $("#itvBody").innerHTML=html;
