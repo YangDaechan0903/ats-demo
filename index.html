@@ -723,6 +723,7 @@ function resumeSrc(c){
 /* ── Storage(클라우드 파일 저장) ── */
 async function uploadToStorage(file, folder){
   try{
+    setCloud(true, "☁ 파일 업로드 중…");
     const safe=(file.name||"file").replace(/[^\w.\-]/g,"_");
     const path=`${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}_${safe}`;
     const res=await fetch(`${SUPABASE_URL}/storage/v1/object/resumes/${path}`,{
@@ -730,9 +731,20 @@ async function uploadToStorage(file, folder){
       headers:{ apikey:SUPABASE_KEY, Authorization:"Bearer "+SUPABASE_KEY, "Content-Type": file.type||"application/octet-stream" },
       body:file
     });
-    if(!res.ok){ console.warn("업로드 실패",res.status, await res.text()); return null; }
+    if(!res.ok){
+      const msg=await res.text();
+      console.warn("업로드 실패",res.status,msg);
+      setCloud(false, "⚠ 파일 업로드 실패 "+res.status);
+      alert("이력서 파일을 클라우드에 올리지 못했습니다.\n(HTTP "+res.status+")\n\n지원자 정보는 저장됐고, 파일은 이 기기에서만 보입니다.");
+      return null;
+    }
+    setCloud(true, "☁ 동기화됨");
     return `${SUPABASE_URL}/storage/v1/object/public/resumes/${path}`;
-  }catch(e){ console.warn("업로드 오류",e); return null; }
+  }catch(e){
+    console.warn("업로드 오류",e);
+    setCloud(false, "⚠ 파일 업로드 오류");
+    return null;
+  }
 }
 async function uploadAndAttach(c, file, kind){
   const url = await uploadToStorage(file, kind);
@@ -1041,8 +1053,9 @@ function addApplicant(){
     stage:"inbox",rate:3,applied:today(),tags:tags.length?tags:["신규 지원"],
     ai:"이력서 등록됨 · 서류 검토 후 평가를 입력하세요.",
     hl:hl.length?hl:["이력서 검토 예정"],memo:"",fileName:"",fileData:"",itvDate:"",itvTime:"",analyzed:false};
-  const done=()=>{j.cands.unshift(c);save();closeAdd();render();if(pickedFile)uploadAndAttach(c,pickedFile,"resume");};
-  if(pickedFile){const fr=new FileReader();fr.onload=()=>{c.fileName=pickedFile.name;c.fileData=fr.result;done();};fr.onerror=done;fr.readAsDataURL(pickedFile);}
+  const f = pickedFile;                       // closeAdd()가 pickedFile을 비우기 전에 붙잡아 둠
+  const done=()=>{j.cands.unshift(c);save();closeAdd();render();if(f)uploadAndAttach(c,f,"resume");};
+  if(f){const fr=new FileReader();fr.onload=()=>{c.fileName=f.name;c.fileData=fr.result;done();};fr.onerror=done;fr.readAsDataURL(f);}
   else done();
 }
 
