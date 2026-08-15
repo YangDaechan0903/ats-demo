@@ -44,6 +44,24 @@
   .cloud{font-size:11px;font-weight:700;margin-bottom:6px}
   .cloud.on{color:#2E8B67}
   .cloud.off{color:#C0842D}
+  /* login */
+  .login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+  .login-box{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:32px 28px;width:360px;max-width:100%;
+    box-shadow:0 8px 30px rgba(20,30,50,.08);text-align:center}
+  .login-logo{width:44px;height:44px;border-radius:12px;background:var(--primary);color:#fff;display:flex;align-items:center;
+    justify-content:center;font-weight:800;font-size:20px;margin:0 auto 14px}
+  .login-box h2{font-size:18px;font-weight:800;letter-spacing:-.02em}
+  .login-sub{font-size:12.5px;color:var(--muted);margin:5px 0 20px}
+  .login-field{text-align:left;margin-bottom:12px}
+  .login-field label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px}
+  .login-field input{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:inherit;font-size:13.5px;outline:0;color:var(--ink)}
+  .login-field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .login-err{font-size:12px;color:#C0492D;min-height:18px;margin-bottom:6px;text-align:left}
+  .login-btn{width:100%;background:var(--primary);color:#fff;border:0;border-radius:9px;padding:12px;font:inherit;
+    font-size:14px;font-weight:700;cursor:pointer}
+  .login-btn:hover{background:#1d3c5f}
+  .login-btn:disabled{opacity:.6;cursor:not-allowed}
+  .side-user{font-size:10.5px;color:var(--faint);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .reject-store{display:flex;align-items:center;gap:9px;margin:0 10px 8px;padding:11px 12px;border-radius:9px;
     cursor:pointer;border:1px solid var(--line);color:var(--muted);font-size:12.5px;font-weight:700}
   .reject-store svg{color:#C0492D;flex-shrink:0}
@@ -286,7 +304,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
-<div class="app">
+<div class="login" id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">A</div>
+    <h2>채용 파이프라인</h2>
+    <p class="login-sub">계속하려면 로그인하세요</p>
+    <div class="login-field"><label>이메일</label><input id="liEmail" type="email" placeholder="name@example.com" autocomplete="username"></div>
+    <div class="login-field"><label>비밀번호</label><input id="liPw" type="password" placeholder="비밀번호" autocomplete="current-password"></div>
+    <div class="login-err" id="liErr"></div>
+    <button class="login-btn" id="liBtn" onclick="doLogin()">로그인</button>
+  </div>
+</div>
+
+<div class="app" id="appRoot" style="display:none">
   <!-- LEFT: job list -->
   <aside class="side">
     <div class="side-brand">
@@ -304,8 +334,10 @@
       <span>불합격 보관함</span><span class="rs-count" id="rejectCount">0</span>
     </div>
     <div class="side-foot">
+      <div class="side-user" id="sideUser"></div>
       <div id="cloudStatus" class="cloud off">☁ 연결 확인 중…</div>
       <a onclick="cloudRefresh()">🔄 동기화 새로고침</a>
+      <a onclick="signOut()" style="margin-left:10px">로그아웃</a>
       <a onclick="resetDemo()" style="margin-left:10px">데모 초기화</a>
     </div>
   </aside>
@@ -502,9 +534,43 @@ function seed(){return [
 /* ── Supabase 클라우드 연결 ── */
 const SUPABASE_URL = "https://nkdhbpkuyemejpzyvleu.supabase.co";
 const SUPABASE_KEY = "sb_publishable_mTPl3AV_37DJbclJkBMx6w_81Q_pXtz";
-const SB_HEADERS = { "apikey":SUPABASE_KEY, "Authorization":"Bearer "+SUPABASE_KEY, "Content-Type":"application/json" };
 const STORE = "ats_jobs_v1";          // 로컬 캐시(파일 포함 전체 보관)
+const TOKEN_STORE = "ats_session_v1"; // 로그인 세션 보관
 let cloudOK = false;
+let session = null;                   // {access_token, refresh_token, email}
+
+function loadSession(){
+  try{ const r=localStorage.getItem(TOKEN_STORE); if(r) session=JSON.parse(r); }catch(e){ session=null; }
+}
+function saveSession(s){
+  session=s;
+  try{ if(s) localStorage.setItem(TOKEN_STORE, JSON.stringify(s)); else localStorage.removeItem(TOKEN_STORE); }catch(e){}
+}
+// 로그인했으면 사용자 토큰, 아니면 공개 키를 사용
+function authToken(){ return (session && session.access_token) ? session.access_token : SUPABASE_KEY; }
+function sbHeaders(extra){
+  return Object.assign({ "apikey":SUPABASE_KEY, "Authorization":"Bearer "+authToken(), "Content-Type":"application/json" }, extra||{});
+}
+const SB_HEADERS = null; // (사용 안 함 — sbHeaders() 사용)
+
+async function signIn(email, password){
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method:"POST",
+    headers:{ "apikey":SUPABASE_KEY, "Content-Type":"application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok || !data.access_token){
+    return { ok:false, msg: (data && (data.error_description||data.msg||data.message)) || ("로그인 실패 ("+res.status+")") };
+  }
+  saveSession({ access_token:data.access_token, refresh_token:data.refresh_token, email:(data.user&&data.user.email)||email });
+  return { ok:true };
+}
+function signOut(){
+  saveSession(null);
+  try{ localStorage.removeItem(STORE); }catch(e){}   // 로컬 캐시도 비워 남의 기기에 데이터가 남지 않게
+  location.reload();
+}
 
 function setCloud(ok, msg){
   cloudOK = ok;
@@ -526,7 +592,7 @@ async function cloudPush(){
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=id`, {
       method:"POST",
-      headers:{ ...SB_HEADERS, "Prefer":"resolution=merge-duplicates,return=minimal" },
+      headers: sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
       body: JSON.stringify({ id:"main", data: lightCopy(), updated_at:new Date().toISOString() })
     });
     if(res.ok) setCloud(true, "☁ 동기화됨");
@@ -536,7 +602,7 @@ async function cloudPush(){
 async function load(){
   let cloud=null;
   try{
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers:SB_HEADERS });
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: sbHeaders() });
     if(res.ok){ const rows=await res.json(); if(rows.length && Array.isArray(rows[0].data)) cloud=rows[0].data; setCloud(true,"☁ 동기화됨"); }
     else setCloud(false, "⚠ 연결 오류 "+res.status);
   }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
@@ -566,11 +632,39 @@ function computeIds(){
   nextJobId=Math.max(0,...JOBS.map(j=>+j.id||0))+1;
   nextCandId=Math.max(100,...JOBS.flatMap(j=>(j.cands||[]).map(c=>+c.id||0)))+1;
 }
-async function init(){
+async function startApp(){
+  document.getElementById("loginScreen").style.display="none";
+  document.getElementById("appRoot").style.display="flex";
+  const su=document.getElementById("sideUser");
+  if(su) su.textContent = session && session.email ? "👤 "+session.email : "";
   await load();
   curJob = JOBS[0] ? JOBS[0].id : null;
   computeIds();
   render();
+}
+async function doLogin(){
+  const btn=document.getElementById("liBtn");
+  const err=document.getElementById("liErr");
+  const email=document.getElementById("liEmail").value.trim();
+  const pw=document.getElementById("liPw").value;
+  if(!email||!pw){ err.textContent="이메일과 비밀번호를 입력하세요."; return; }
+  btn.disabled=true; btn.textContent="로그인 중…"; err.textContent="";
+  const r=await signIn(email,pw);
+  btn.disabled=false; btn.textContent="로그인";
+  if(!r.ok){ err.textContent=r.msg; return; }
+  await startApp();
+}
+async function init(){
+  loadSession();
+  if(session && session.access_token){ await startApp(); }
+  else {
+    document.getElementById("loginScreen").style.display="flex";
+    document.getElementById("appRoot").style.display="none";
+    const pw=document.getElementById("liPw");
+    if(pw) pw.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+    const em=document.getElementById("liEmail");
+    if(em){ em.addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); }); em.focus(); }
+  }
 }
 
 function job(){return JOBS.find(j=>j.id===curJob)||JOBS[0];}
@@ -728,7 +822,7 @@ async function uploadToStorage(file, folder){
     const path=`${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}_${safe}`;
     const res=await fetch(`${SUPABASE_URL}/storage/v1/object/resumes/${path}`,{
       method:"POST",
-      headers:{ apikey:SUPABASE_KEY, Authorization:"Bearer "+SUPABASE_KEY, "Content-Type": file.type||"application/octet-stream" },
+      headers:{ apikey:SUPABASE_KEY, Authorization:"Bearer "+authToken(), "Content-Type": file.type||"application/octet-stream" },
       body:file
     });
     if(!res.ok){
