@@ -397,17 +397,18 @@
 
   /* ═══════════ e-HRIS 확장 (상단 대분류 · 임직원 · 인사기록카드) ═══════════ */
   /* 상단 글로벌 바 */
-  .gnb{display:flex;align-items:center;gap:2px;background:#3B2419;padding:0 14px;height:46px;flex-shrink:0}
+  .gnb{display:flex;align-items:center;gap:2px;background:#3B2419;padding:0 14px;height:46px;flex-shrink:0;position:relative;z-index:120}
   .gnb .brand{display:flex;align-items:center;gap:8px;color:#fff;font-weight:800;font-size:14px;padding-right:14px;margin-right:6px;border-right:1px solid rgba(255,255,255,.14)}
   .gnb .brand .g-logo{width:24px;height:24px;border-radius:6px;background:#6A4634;display:flex;align-items:center;justify-content:center;font-size:12px}
   .gnb-item{position:relative}
+  .gnb-item.open{z-index:121}
   .gnb-item > .gnb-btn{background:transparent;border:0;color:#CBB5A5;font:inherit;font-size:13px;font-weight:700;
     padding:0 15px;height:46px;cursor:pointer;display:flex;align-items:center;gap:5px}
   .gnb-item.on > .gnb-btn,.gnb-item > .gnb-btn:hover{color:#fff}
   .gnb-item.on > .gnb-btn{box-shadow:inset 0 -3px 0 #fff}
   .gnb-item .soon{font-size:9px;font-weight:800;color:#AAAAAA;background:rgba(255,255,255,.08);border-radius:10px;padding:1px 5px;margin-left:3px}
   .gnb-menu{position:absolute;top:46px;left:8px;background:#fff;border:1px solid var(--line);border-radius:10px;
-    box-shadow:0 12px 34px rgba(0,0,0,.18);padding:6px;min-width:180px;display:none;z-index:80}
+    box-shadow:0 12px 34px rgba(0,0,0,.18);padding:6px;min-width:180px;display:none;z-index:180;max-height:min(320px,calc(100vh - 64px));overflow:auto;-webkit-overflow-scrolling:touch}
   .gnb-item.open .gnb-menu{display:block}
   .gnb-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:0;
     font:inherit;font-size:13px;color:var(--ink);padding:9px 11px;border-radius:7px;cursor:pointer;font-weight:600}
@@ -621,15 +622,17 @@
     .gnb::-webkit-scrollbar{display:none}
     .gnb .brand{font-size:13px;padding-right:8px;margin-right:2px;flex-shrink:0}
     .gnb .brand span:last-child{white-space:nowrap}
-    .gnb-item{flex-shrink:0}
+    .gnb-item{flex-shrink:0;position:static}
     .gnb-item > .gnb-btn{height:48px;padding:0 10px;font-size:12.5px;white-space:nowrap}
     .gnb-item .soon{display:none}   /* 폰에선 '추후' 배지 숨겨 공간 확보 */
     .gnb-right{margin-left:4px;flex-shrink:0;gap:6px}
     .gnb-user{display:none}          /* 폰에선 이메일 숨김(공간 절약) */
     #gnbAdmin{padding:0 8px;font-size:12px;white-space:nowrap}
     .gnb-logout{padding:5px 8px;font-size:11px;white-space:nowrap}
-    /* 드롭다운 메뉴가 화면 밖으로 안 나가게 */
-    .gnb-menu{left:6px;right:6px;min-width:0}
+    /* 모바일에서는 하위 메뉴를 뷰포트 기준으로 띄워 잘리지 않게 처리 */
+    .gnb-menu{position:fixed;top:56px;left:10px;right:10px;min-width:0;width:auto;max-width:none;border-radius:12px;padding:8px;z-index:300;max-height:min(260px,calc(100vh - 70px));overflow:auto;-webkit-overflow-scrolling:touch}
+    .gnb-menu button{padding:12px 12px;font-size:13px}
+    .gnb-menu .mlabel{padding:6px 12px 4px}
 
     /* 모듈 컨테이너: 세로 배치, 높이 자동 */
     .app{flex-direction:column;height:auto !important;min-height:0;overflow:visible !important}
