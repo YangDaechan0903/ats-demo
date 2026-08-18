@@ -2744,10 +2744,19 @@ document.addEventListener('keydown',e=>{if(e.key==="Escape"){closeItv();closeDet
 const MODULES=["ats","contract","develop","evaluate","reward","employees","labor","admin"];
 const AXIS_OF={ats:"acquire",contract:"acquire",develop:"develop",evaluate:"evaluate",reward:"reward",employees:"retain",labor:"retain",admin:"admin"};
 
+function axisDefaultModule(axis){
+  if(axis==="acquire") return hasPerm("ats") ? "ats" : (hasPerm("contract") ? "contract" : null);
+  if(axis==="retain") return hasPerm("employees") ? "employees" : (hasPerm("labor") ? "labor" : null);
+  return null;
+}
 function toggleAxis(axis){
   const item=document.querySelector(`.gnb-item[data-axis="${axis}"]`);
+  if(!item) return;
   const wasOpen=item.classList.contains("open");
   document.querySelectorAll(".gnb-item").forEach(i=>i.classList.remove("open"));
+  const mobileNav = window.innerWidth<=820;
+  const defMod = axisDefaultModule(axis);
+  if(mobileNav && defMod) goModule(defMod);
   if(!wasOpen) item.classList.add("open");
 }
 document.addEventListener("click",e=>{ if(!e.target.closest(".gnb-item")) document.querySelectorAll(".gnb-item").forEach(i=>i.classList.remove("open")); });
