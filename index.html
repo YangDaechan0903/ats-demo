@@ -3101,6 +3101,17 @@ function onMoneyInput(el, cb){
   el.value = raw? Number(raw).toLocaleString("ko-KR") : "";
   if(cb) cb(raw);   // 콜백엔 순수 숫자 전달
 }
+const COMMA_FIELD_KEYS=new Set([
+  "avgMonthlyWage","npWage","npFee","hiWage","hiFee","eiWage","eiFee",
+  "studentLoanAmt"
+]);
+function isCommaFieldKey(k){ return COMMA_FIELD_KEYS.has(String(k||"")); }
+function fieldDisplayValue(k,v){ return isCommaFieldKey(k) ? esc(withComma(v)) : val(v); }
+function onCommaFieldInput(el, cb){
+  const raw=digits(el.value);
+  el.value = raw ? Number(raw).toLocaleString("ko-KR") : "";
+  if(cb) cb(raw);
+}
 
 /* ── 근로계약 목록 / 노무 목록 (임직원 재사용) ── */
 function renderContractList(){
@@ -3208,7 +3219,13 @@ const RC_TAX_FIELDS=[   // 세액·감면 정보
 ];
 const RC_EXT_SECTIONS=[["고용·신분 정보",RC_EMP_FIELDS],["급여이체 정보",RC_BANK_FIELDS],["급여·4대보험 정보",RC_PAY_FIELDS],["세액·감면 정보",RC_TAX_FIELDS]];
 function rcFieldRow(e,on,spec){
-  return spec.map(([k,label])=>`<div class="fld"><label>${label}</label><input ${D(on)} value="${val(e[k])}" onchange="empField('${k}',this.value)"></div>`).join("");
+  return spec.map(([k,label])=>{
+    const comma = isCommaFieldKey(k);
+    const attrs = comma
+      ? `inputmode="numeric" oninput="onCommaFieldInput(this,v=>empField('${k}',v))" style="text-align:right"`
+      : `onchange="empField('${k}',this.value)"`;
+    return `<div class="fld"><label>${label}</label><input ${D(on)} value="${fieldDisplayValue(k,e[k])}" ${attrs}></div>`;
+  }).join("");
 }
 function rcExtSection(e,on,title,spec,badge){
   const b=badge?` <span class="badge" style="background:#eef2ff;color:#4f46e5;border-color:#c7d2fe">${badge}</span>`:"";
@@ -3714,7 +3731,7 @@ function renderLabor(e){
 }
 
 /* ── 임직원 필드 편집 핸들러 ── */
-function empField(k,v){ const e=findEmp(openEmpId); if(e){ e[k]=v; } }
+function empField(k,v){ const e=findEmp(openEmpId); if(e){ e[k]=isCommaFieldKey(k)?digits(v):v; } }
 // 직원 사진 업로드 (이미지 리사이즈해서 dataURL 저장)
 function onEmpPhoto(file){
   const e=findEmp(openEmpId); if(!e||!file) return;
