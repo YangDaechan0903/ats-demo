@@ -6,8 +6,8 @@
 <title>채용 파이프라인 · ATS 데모</title>
 <style>
   :root{
-    --bg:#F5F5F5;--surface:#fff;--ink:#111111;--muted:#5A5A5A;--faint:#9B9B9B;
-    --line:#E2E2E2;--primary:#1A1A1A;--primary-soft:#EFEFEF;--shadow:0 1px 3px rgba(0,0,0,.07);
+    --bg:#F6F1EC;--surface:#FFFCF9;--ink:#3B2419;--muted:#6F5648;--faint:#A0897A;
+    --line:#E6D8CD;--primary:#4A2F22;--primary-soft:#F1E5DB;--shadow:0 1px 3px rgba(59,36,25,.10);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
@@ -19,9 +19,9 @@
     display:flex;flex-direction:column;height:100vh}
   .side-brand{display:flex;align-items:center;gap:9px;padding:16px 18px;border-bottom:1px solid var(--line)}
   .side-brand .sb-title{min-width:0}
-  .logout-btn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;background:#F2F2F2;color:var(--muted);
+  .logout-btn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;background:#F4ECE6;color:var(--muted);
     border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
-  .logout-btn:hover{background:#FBF2F0;border-color:#E8CDC6;color:#C0492D}
+  .logout-btn:hover{background:#F6ECE6;border-color:#DCC8BB;color:#6B4A3A}
   .side-account{font-size:10.5px;color:var(--faint);padding:8px 18px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .side-brand .logo{width:26px;height:26px;border-radius:7px;background:var(--primary);color:#fff;
     display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
@@ -30,25 +30,25 @@
   .side-newjob{margin:14px 14px 8px;display:flex;align-items:center;justify-content:center;gap:6px;
     background:var(--primary);color:#fff;border:0;border-radius:9px;padding:10px;font:inherit;font-size:13px;
     font-weight:700;cursor:pointer}
-  .side-newjob:hover{background:#000000}
+  .side-newjob:hover{background:#2F1C14}
   .side-label{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--faint);
     text-transform:uppercase;padding:10px 18px 6px}
   .job-list{flex:1;overflow-y:auto;padding:0 10px 14px}
   .job-item{border-radius:9px;padding:10px 12px;cursor:pointer;margin-bottom:3px;border:1px solid transparent}
-  .job-item:hover{background:#F6F6F6}
-  .job-item.active{background:var(--primary-soft);border-color:#DADADA}
+  .job-item:hover{background:#F7F0EA}
+  .job-item.active{background:var(--primary-soft);border-color:#DFCEC2}
   .job-item .jt{font-size:13px;font-weight:700;letter-spacing:-.01em;line-height:1.35}
   .job-item.active .jt{color:var(--primary)}
   .job-item .jm{display:flex;align-items:center;gap:8px;margin-top:5px}
   .job-item .jdept{font-size:11px;color:var(--muted)}
   .job-item .jcount{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--muted);
-    background:#F0F0F0;border-radius:20px;padding:1px 8px}
+    background:#F3EAE3;border-radius:20px;padding:1px 8px}
   .job-item.active .jcount{background:#fff;color:var(--primary)}
   .side-foot{border-top:1px solid var(--line);padding:10px 18px}
   .side-foot a{font-size:11px;color:var(--faint);cursor:pointer;text-decoration:underline}
   .cloud{font-size:11px;font-weight:700;margin-bottom:6px}
-  .cloud.on{color:#2A2A2A}
-  .cloud.off{color:#555555}
+  .cloud.on{color:#5A3A2B}
+  .cloud.off{color:#8A6650}
   /* login */
   .login{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
   .login-box{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:32px 28px;width:360px;max-width:100%;
@@ -61,15 +61,15 @@
   .login-field label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px}
   .login-field input{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:inherit;font-size:13.5px;outline:0;color:var(--ink)}
   .login-field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
-  .login-err{font-size:12px;color:#C0492D;min-height:18px;margin-bottom:6px;text-align:left}
+  .login-err{font-size:12px;color:#6B4A3A;min-height:18px;margin-bottom:6px;text-align:left}
   .login-btn{width:100%;background:var(--primary);color:#fff;border:0;border-radius:9px;padding:12px;font:inherit;
     font-size:14px;font-weight:700;cursor:pointer}
-  .login-btn:hover{background:#000000}
+  .login-btn:hover{background:#2F1C14}
   .login-btn:disabled{opacity:.6;cursor:not-allowed}
   .login-switch{font-size:12.5px;color:var(--muted);text-align:center;margin-top:14px}
   .login-switch a{color:var(--primary);font-weight:700;cursor:pointer;text-decoration:none}
   .login-switch a:hover{text-decoration:underline}
-  .login-ok{font-size:12.5px;color:#2A2A2A;background:#EDEDED;border:1px solid #D5D5D5;border-radius:9px;padding:11px 12px;line-height:1.55;margin-bottom:8px;text-align:left}
+  .login-ok{font-size:12.5px;color:#5A3A2B;background:#EFE3D8;border:1px solid #DCCABD;border-radius:9px;padding:11px 12px;line-height:1.55;margin-bottom:8px;text-align:left}
   /* 재직/퇴사 탭 */
   .emp-view-tabs{display:flex;gap:4px;margin-top:12px}
   .emp-view-tabs .evt{background:transparent;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px;
@@ -92,25 +92,25 @@
   .gsearch-body{flex:1;overflow-y:auto;padding:12px 16px 24px}
   .gs-count{font-size:12px;color:var(--muted);padding:6px 2px 10px}
   .gs-row{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;cursor:pointer;transition:border-color .1s}
-  .gs-row:hover{border-color:#B8B8B8;background:#FAFAFA}
+  .gs-row:hover{border-color:#B8B8B8;background:#FCF7F3}
   .gs-av{width:40px;height:40px;border-radius:10px;background:var(--primary-soft);color:var(--ink);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;flex-shrink:0}
   .gs-main{flex:1;min-width:0}
   .gs-name{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .gs-sub{font-size:12px;color:var(--muted);margin-top:2px}
   .gs-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
-  .gs-reason{font-size:11.5px;color:#B23A22;margin-top:4px}
+  .gs-reason{font-size:11.5px;color:#5C3D30;margin-top:4px}
   .gs-badge{font-size:10px;font-weight:800;color:var(--muted);background:var(--primary-soft);border-radius:20px;padding:2px 8px}
-  .gs-badge.rej{color:#B23A22;background:#F6E6E2}
+  .gs-badge.rej{color:#5C3D30;background:#F0E1D7}
   .gs-score{font-size:12px;font-weight:800;color:var(--ink);flex-shrink:0;white-space:nowrap}
   .gs-empty{text-align:center;color:var(--faint);font-size:13px;padding:50px 20px}
   @media(max-width:640px){ .gsearch-overlay{padding:0} .gsearch-box{border-radius:0;max-height:100%;height:100%} }
   /* 인사기록카드 사진란 */
   .rc-photo-layout{display:flex;gap:18px;align-items:flex-start}
   .rc-photo{flex-shrink:0;width:120px;display:flex;flex-direction:column;align-items:center;gap:8px}
-  .rc-photo-frame{width:120px;height:150px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#FAFAFA;display:flex;align-items:center;justify-content:center}
+  .rc-photo-frame{width:120px;height:150px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#FCF7F3;display:flex;align-items:center;justify-content:center}
   .rc-photo-frame img{width:100%;height:100%;object-fit:cover}
   .rc-photo-empty{font-size:11px;color:var(--faint);text-align:center;line-height:1.5}
-  .rc-photo-del{font:inherit;font-size:11px;font-weight:700;color:#B23A22;background:transparent;border:1px solid #E8CDC6;border-radius:7px;padding:5px 10px;cursor:pointer}
+  .rc-photo-del{font:inherit;font-size:11px;font-weight:700;color:#5C3D30;background:transparent;border:1px solid #DCC8BB;border-radius:7px;padding:5px 10px;cursor:pointer}
   @media(max-width:640px){ .rc-photo-layout{flex-direction:column-reverse} .rc-photo{width:100%;align-items:flex-start} }
   /* 인사기록카드 PDF 자동기입 바 */
   .rc-import-bar{background:var(--primary-soft);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px}
@@ -118,13 +118,13 @@
   .rc-import-btns{display:flex;gap:8px;flex-wrap:wrap}
   .rc-import-status{font-size:12px;margin-top:10px;font-weight:600}
   .rc-import-status.loading{color:var(--muted)}
-  .rc-import-status.ok{color:#2A2A2A}
-  .rc-import-status.warn{color:#B23A22}
+  .rc-import-status.ok{color:#5A3A2B}
+  .rc-import-status.warn{color:#5C3D30}
   /* 사용자 관리 */
-  .pending-badge{background:#E23B2E;color:#fff;font-size:10px;font-weight:800;border-radius:20px;padding:1px 6px;margin-left:2px}
+  .pending-badge{background:#7A5541;color:#fff;font-size:10px;font-weight:800;border-radius:20px;padding:1px 6px;margin-left:2px}
   .user-row{display:flex;align-items:flex-start;gap:14px;padding:14px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;background:#fff}
   .user-row.pending{background:#F8F8F8;border-color:#D8D8D8}
-  .user-row.rejected{background:#FBF3F1;border-color:#E8CDC6;opacity:.85}
+  .user-row.rejected{background:#FBF3F1;border-color:#DCC8BB;opacity:.85}
   .user-info{flex:1;min-width:0}
   .user-name{font-size:14px;font-weight:800}
   .user-email{font-size:12px;color:var(--muted);margin-top:1px}
@@ -132,20 +132,20 @@
   .user-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
   .perm-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
   .perm-chk{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);
-    background:#F2F2F2;border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
-  .perm-chk.on{background:var(--primary-soft);border-color:#D0D0D0;color:var(--primary);font-weight:800}
+    background:#F4ECE6;border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+  .perm-chk.on{background:var(--primary-soft);border-color:#D7C2B4;color:var(--primary);font-weight:800}
   .perm-chk input{width:15px;height:15px;accent-color:var(--primary);cursor:pointer}
   .side-user{font-size:10.5px;color:var(--faint);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .reject-store{display:flex;align-items:center;gap:9px;margin:0 10px 8px;padding:11px 12px;border-radius:9px;
     cursor:pointer;border:1px solid var(--line);color:var(--muted);font-size:12.5px;font-weight:700}
-  .reject-store svg{color:#C0492D;flex-shrink:0}
-  .reject-store:hover{background:#FBF2F0;border-color:#E8C9C2}
-  .reject-store.active{background:#FBF2F0;border-color:#E0B3A8;color:#B23A22}
-  .reject-store .rs-count{margin-left:auto;font-size:10.5px;background:#F1E4E1;color:#B23A22;border-radius:20px;padding:1px 8px}
-  .reapply-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;color:#B23A22;
-    background:#FBE9E5;border-radius:20px;padding:2px 8px;margin-top:8px}
-  .reapply-banner{background:#FBE9E5;border:1px solid #F0C9C0;border-radius:10px;padding:10px 12px;margin-bottom:14px;
-    font-size:12px;color:#8F2E1B;line-height:1.5}
+  .reject-store svg{color:#6B4A3A;flex-shrink:0}
+  .reject-store:hover{background:#F6ECE6;border-color:#E8C9C2}
+  .reject-store.active{background:#F6ECE6;border-color:#C9AB98;color:#5C3D30}
+  .reject-store .rs-count{margin-left:auto;font-size:10.5px;background:#EADDD4;color:#5C3D30;border-radius:20px;padding:1px 8px}
+  .reapply-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:800;color:#5C3D30;
+    background:#F3E5DC;border-radius:20px;padding:2px 8px;margin-top:8px}
+  .reapply-banner{background:#F3E5DC;border:1px solid #F0C9C0;border-radius:10px;padding:10px 12px;margin-bottom:14px;
+    font-size:12px;color:#4E3227;line-height:1.5}
   .reapply-banner b{font-weight:800}
   .rej-list{flex:1;overflow-y:auto;padding:16px 22px;display:flex;flex-direction:column;gap:10px}
   .rej-card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:14px 16px;
@@ -153,16 +153,16 @@
   .rej-card .rc-main{flex:1;min-width:0}
   .rej-card .rc-name{font-size:14px;font-weight:800}
   .rej-card .rc-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
-  .rej-card .rc-reason{font-size:12px;color:#8F2E1B;background:#FBF2F0;border-radius:8px;padding:7px 10px;margin-top:9px}
+  .rej-card .rc-reason{font-size:12px;color:#4E3227;background:#F6ECE6;border-radius:8px;padding:7px 10px;margin-top:9px}
   .rej-card .rc-tools{display:flex;flex-direction:column;gap:6px;flex-shrink:0}
   .rej-card .rc-tools button{font:inherit;font-size:11.5px;font-weight:700;border-radius:8px;padding:7px 11px;cursor:pointer;white-space:nowrap}
   .rej-card .rc-view{border:1px solid var(--line);background:#fff;color:var(--ink)}
-  .rej-card .rc-view:hover{background:#F2F2F2}
+  .rej-card .rc-view:hover{background:#F4ECE6}
   .rej-card .rc-restore{border:0;background:var(--primary);color:#fff}
-  .rej-card .rc-restore:hover{background:#000000}
+  .rej-card .rc-restore:hover{background:#2F1C14}
   .rej-empty{text-align:center;color:var(--faint);font-size:13px;padding:60px 0}
-  .btn.danger{background:#fff;color:#C0492D;border:1px solid #E8CDC6}
-  .btn.danger:hover{background:#FBF2F0}
+  .btn.danger{background:#fff;color:#6B4A3A;border:1px solid #DCC8BB}
+  .btn.danger:hover{background:#F6ECE6}
   /* interview overlay */
   .itv{position:fixed;inset:0;background:rgba(20,22,27,.45);display:none;z-index:55;padding:22px}
   .itv.show{display:flex}
@@ -173,9 +173,9 @@
   .itv-head .s{font-size:12px;color:var(--muted);margin-top:2px}
   .itv-tools{margin-left:auto;display:flex;align-items:center;gap:8px}
   .itv-body{flex:1;overflow-y:auto;padding:18px}
-  .itv-summary{background:#F3F3F3;border:1px solid #E4E4E4;border-radius:12px;padding:14px;margin-bottom:16px}
+  .itv-summary{background:#F4ECE6;border:1px solid #E6D6C7;border-radius:12px;padding:14px;margin-bottom:16px}
   .itv-summary .big{font-size:26px;font-weight:800}
-  .audio-row{display:flex;align-items:center;gap:10px;background:#F6F6F6;border:1px solid var(--line);
+  .audio-row{display:flex;align-items:center;gap:10px;background:#F7F0EA;border:1px solid var(--line);
     border-radius:10px;padding:10px 12px;margin-bottom:16px;flex-wrap:wrap}
   .audio-row audio{height:34px;max-width:100%}
   .q-card{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:#fff}
@@ -187,24 +187,24 @@
   .q-card .qa{display:flex;align-items:center;gap:8px;margin-top:8px}
   .rec-btn{font:inherit;font-size:11.5px;font-weight:700;border:1px solid var(--line);background:#fff;
     border-radius:8px;padding:7px 11px;cursor:pointer}
-  .rec-btn.on{background:#FBE9E5;border-color:#E8A99D;color:#B23A22}
-  .q-eval{margin-top:9px;font-size:11.5px;padding:8px 10px;border-radius:8px;background:#F0F0F0;color:#333333}
+  .rec-btn.on{background:#F3E5DC;border-color:#E8A99D;color:#5C3D30}
+  .q-eval{margin-top:9px;font-size:11.5px;padding:8px 10px;border-radius:8px;background:#F3EAE3;color:#6A4634}
   .q-eval b{font-weight:800}
   .rec-panel{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;background:#fff}
   .rec-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
   .rec-all{font:inherit;font-size:13px;font-weight:800;border:0;border-radius:10px;padding:11px 18px;cursor:pointer;
     background:var(--primary);color:#fff}
-  .rec-all:hover{background:#000000}
-  .rec-all.on{background:#C0492D}
+  .rec-all:hover{background:#2F1C14}
+  .rec-all.on{background:#6B4A3A}
   .rec-all.on:hover{background:#a53c22}
-  .rec-status{font-size:11.5px;font-weight:700;color:#C0492D}
+  .rec-status{font-size:11.5px;font-weight:700;color:#6B4A3A}
   .rec-label{display:block;font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--faint);margin-bottom:6px}
   .transcript{width:100%;border:1px solid var(--line);border-radius:9px;padding:12px;font:inherit;font-size:13px;
     outline:0;resize:vertical;min-height:150px;line-height:1.7;color:var(--ink)}
   .transcript:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
   .q-ref-title{font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--faint);margin:6px 0 10px}
   .q-ref{display:flex;gap:8px;font-size:12.5px;line-height:1.5;padding:9px 12px;border:1px solid var(--line);
-    border-radius:9px;margin-bottom:8px;background:#FAFAFA}
+    border-radius:9px;margin-bottom:8px;background:#FCF7F3}
   .q-ref .num{color:var(--primary);font-weight:800;flex-shrink:0}
 
   /* ── main ── */
@@ -220,9 +220,9 @@
   .search input{border:0;outline:0;font:inherit;font-size:13px;width:150px;background:transparent;color:var(--ink)}
   .btn{display:inline-flex;align-items:center;gap:6px;background:var(--primary);color:#fff;border:0;
     border-radius:9px;padding:9px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
-  .btn:hover{background:#000000}
-  .btn.ghost{background:#F2F2F2;color:var(--ink)}
-  .btn.ghost:hover{background:#EAEAEA}
+  .btn:hover{background:#2F1C14}
+  .btn.ghost{background:#F4ECE6;color:var(--ink)}
+  .btn.ghost:hover{background:#ECDDCE}
 
   /* ── board ── */
   .board{flex:1;display:flex;gap:14px;padding:16px 22px;overflow-x:auto;overflow-y:hidden}
@@ -236,13 +236,13 @@
   .col.over{outline:2px dashed var(--primary);outline-offset:-4px}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;
     cursor:grab;box-shadow:var(--shadow)}
-  .card:hover{border-color:#CFCFCF}
+  .card:hover{border-color:#D5C0B2}
   .card.dragging{opacity:.5}
   .card .cn{font-size:13.5px;font-weight:700;letter-spacing:-.01em}
   .card .cr{font-size:11.5px;color:var(--muted);margin-top:2px}
   .card .ct{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
-  .chip{font-size:10px;font-weight:600;color:var(--muted);background:#F0F0F0;border-radius:20px;padding:2px 8px}
-  .card .cf{display:flex;align-items:center;gap:6px;margin-top:9px;padding-top:9px;border-top:1px solid #F0F0F0}
+  .chip{font-size:10px;font-weight:600;color:var(--muted);background:#F3EAE3;border-radius:20px;padding:2px 8px}
+  .card .cf{display:flex;align-items:center;gap:6px;margin-top:9px;padding-top:9px;border-top:1px solid #F3EAE3}
   .card .mini-fit{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:20px}
   .card .cdate{margin-left:auto;font-size:10.5px;color:var(--faint)}
   .rate{display:flex;gap:2px}
@@ -267,7 +267,7 @@
   .d-side{font-size:13px}
   .d-side .kv{font-size:13.5px}
   .d-side .fit-score{font-size:34px}
-  .size-ctrl{display:inline-flex;align-items:center;gap:2px;background:#F2F2F2;border:1px solid var(--line);border-radius:8px;padding:2px;margin-right:4px}
+  .size-ctrl{display:inline-flex;align-items:center;gap:2px;background:#F4ECE6;border:1px solid var(--line);border-radius:8px;padding:2px;margin-right:4px}
   .size-ctrl button{background:transparent;border:0;font:inherit;font-size:11.5px;font-weight:800;color:var(--muted);
     padding:5px 9px;border-radius:6px;cursor:pointer;line-height:1}
   .size-ctrl button.on{background:#fff;color:var(--primary);box-shadow:0 1px 2px rgba(0,0,0,.08)}
@@ -279,11 +279,11 @@
   .d-head-tools{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
   .d-move{font:inherit;font-size:12px;font-weight:700;border-radius:8px;padding:8px 12px;cursor:pointer;
     border:1px solid var(--line);background:#fff;color:var(--ink)}
-  .d-move:hover{background:#F2F2F2}
+  .d-move:hover{background:#F4ECE6}
   .d-move.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
   .d-move:disabled{opacity:.4;cursor:not-allowed}
   .x{background:none;border:0;cursor:pointer;color:var(--faint);padding:6px;border-radius:7px}
-  .x:hover{background:#F1F1F1;color:var(--ink)}
+  .x:hover{background:#F2E8E0;color:var(--ink)}
   .d-body{flex:1;display:flex;min-height:0}
   .d-main{flex:1;background:#EEF0F4;min-width:0;display:flex;flex-direction:column}
   .d-main .resume-frame{flex:1;border:0;width:100%;background:#fff}
@@ -297,7 +297,7 @@
   .resume-doc .rd-h{font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--faint);margin:16px 0 8px}
   .resume-doc .hl{font-size:13px;line-height:1.6;margin-bottom:7px;padding-left:14px;position:relative}
   .resume-doc .hl::before{content:"·";position:absolute;left:3px;color:var(--primary);font-weight:800}
-  .d-side{width:384px;flex-shrink:0;border-left:1px solid var(--line);overflow-y:auto;padding:16px 16px 26px;background:#FAFAFA}
+  .d-side{width:384px;flex-shrink:0;border-left:1px solid var(--line);overflow-y:auto;padding:16px 16px 26px;background:#FCF7F3}
   .fit{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
   .fit-top{display:flex;align-items:baseline;gap:7px}
   .fit-score{font-size:30px;font-weight:800;letter-spacing:-.02em}
@@ -309,22 +309,22 @@
   .sw{display:flex;gap:9px;margin-bottom:14px}
   .sw .col2{flex:1;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:#fff}
   .sw h5{font-size:11px;font-weight:800;margin-bottom:8px}
-  .sw .pos h5{color:#2A2A2A}.sw .neg h5{color:#C0492D}
+  .sw .pos h5{color:#5A3A2B}.sw .neg h5{color:#6B4A3A}
   .sw ul{list-style:none}
   .sw li{font-size:11.5px;line-height:1.5;color:#2a2a2a;padding-left:13px;position:relative;margin-bottom:5px}
-  .sw .pos li::before{content:"+";position:absolute;left:0;color:#2A2A2A;font-weight:800}
-  .sw .neg li::before{content:"\2212";position:absolute;left:0;color:#C0492D;font-weight:800}
+  .sw .pos li::before{content:"+";position:absolute;left:0;color:#5A3A2B;font-weight:800}
+  .sw .neg li::before{content:"\2212";position:absolute;left:0;color:#6B4A3A;font-weight:800}
   .side-sec{margin-bottom:14px}
   .side-sec .sh{display:flex;align-items:center;margin-bottom:8px}
   .side-sec .sh h4{font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--faint)}
   .side-sec .sh .edit-btn{margin-left:auto;font:inherit;font-size:11px;font-weight:700;color:var(--primary);
-    background:var(--primary-soft);border:1px solid #DADADA;border-radius:7px;padding:5px 10px;cursor:pointer}
-  .kv{display:flex;gap:10px;font-size:12.5px;padding:5px 0;border-bottom:1px solid #F1F1F1}
+    background:var(--primary-soft);border:1px solid #DFCEC2;border-radius:7px;padding:5px 10px;cursor:pointer}
+  .kv{display:flex;gap:10px;font-size:12.5px;padding:5px 0;border-bottom:1px solid #F2E8E0}
   .kv .k{color:var(--faint);width:78px;flex-shrink:0}
   .kv .v{color:var(--ink)}
-  .ai-box{background:#F3F3F3;border:1px solid #E4E4E4;border-radius:10px;padding:11px 12px;font-size:12px;
+  .ai-box{background:#F4ECE6;border:1px solid #E6D6C7;border-radius:10px;padding:11px 12px;font-size:12px;
     line-height:1.6;color:#4A4358}
-  .ai-box .lab{font-size:10.5px;font-weight:800;color:#444444;margin-bottom:5px}
+  .ai-box .lab{font-size:10.5px;font-weight:800;color:#7A5541;margin-bottom:5px}
   textarea.memo{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit;
     font-size:12.5px;outline:0;resize:vertical;min-height:70px;line-height:1.6;color:var(--ink)}
   textarea.memo:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
@@ -351,10 +351,10 @@
   .field input:focus,.field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
   .field .hint{font-size:10.5px;color:var(--faint);margin-top:4px}
   .file-drop{display:flex;align-items:center;gap:9px;border:1px dashed var(--line);border-radius:9px;
-    padding:10px 11px;cursor:pointer;background:#F7F7F7}
+    padding:10px 11px;cursor:pointer;background:#F8F2ED}
   .file-drop:hover{border-color:var(--primary);background:var(--primary-soft)}
   .file-drop.filled{border-style:solid;border-color:var(--primary);background:var(--primary-soft)}
-  .file-drop.drag{border-style:solid;border-color:var(--primary);background:#E4E4E4;transform:scale(1.01)}
+  .file-drop.drag{border-style:solid;border-color:var(--primary);background:#E6D6C7;transform:scale(1.01)}
   .file-drop input{display:none}
   .file-drop svg{color:var(--muted);flex-shrink:0}
   .file-drop .fi-name{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -375,13 +375,13 @@
     .side-label{display:none}
     .job-list{display:flex;flex:none;overflow-x:auto;overflow-y:hidden;gap:8px;padding:4px 14px 12px}
     .job-item{min-width:190px;flex-shrink:0;margin-bottom:0;border:1px solid var(--line)}
-    .job-item.active{border-color:#DADADA}
+    .job-item.active{border-color:#DFCEC2}
     /* 모바일에서도 동기화 상태·새로고침은 보이게 (가로 한 줄로 압축) */
     .side-foot{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
     .side-foot .cloud{margin-bottom:0}
     .main{min-height:auto}
     .board{flex-direction:column;overflow-x:hidden;padding:14px}
-    .col{width:auto;min-width:0;max-height:none;background:#EAEAEA}
+    .col{width:auto;min-width:0;max-height:none;background:#ECDDCE}
     .cards{overflow:visible;flex:none}
     .card{cursor:pointer}
     .detail{padding:0}
@@ -397,11 +397,11 @@
 
   /* ═══════════ e-HRIS 확장 (상단 대분류 · 임직원 · 인사기록카드) ═══════════ */
   /* 상단 글로벌 바 */
-  .gnb{display:flex;align-items:center;gap:2px;background:#111111;padding:0 14px;height:46px;flex-shrink:0}
+  .gnb{display:flex;align-items:center;gap:2px;background:#3B2419;padding:0 14px;height:46px;flex-shrink:0}
   .gnb .brand{display:flex;align-items:center;gap:8px;color:#fff;font-weight:800;font-size:14px;padding-right:14px;margin-right:6px;border-right:1px solid rgba(255,255,255,.14)}
-  .gnb .brand .g-logo{width:24px;height:24px;border-radius:6px;background:#333333;display:flex;align-items:center;justify-content:center;font-size:12px}
+  .gnb .brand .g-logo{width:24px;height:24px;border-radius:6px;background:#6A4634;display:flex;align-items:center;justify-content:center;font-size:12px}
   .gnb-item{position:relative}
-  .gnb-item > .gnb-btn{background:transparent;border:0;color:#CCCCCC;font:inherit;font-size:13px;font-weight:700;
+  .gnb-item > .gnb-btn{background:transparent;border:0;color:#CBB5A5;font:inherit;font-size:13px;font-weight:700;
     padding:0 15px;height:46px;cursor:pointer;display:flex;align-items:center;gap:5px}
   .gnb-item.on > .gnb-btn,.gnb-item > .gnb-btn:hover{color:#fff}
   .gnb-item.on > .gnb-btn{box-shadow:inset 0 -3px 0 #fff}
@@ -438,20 +438,20 @@
   .soon-wrap .ico{font-size:34px;margin-bottom:14px}
   .soon-wrap h2{font-size:18px;font-weight:800;margin-bottom:8px}
   .soon-wrap p{font-size:13px;color:var(--muted);line-height:1.7}
-  .soon-tag{display:inline-block;font-size:11px;font-weight:800;color:#555555;background:#EEEEEE;border-radius:20px;padding:4px 12px;margin-bottom:16px}
+  .soon-tag{display:inline-block;font-size:11px;font-weight:800;color:#8A6650;background:#F0E6DD;border-radius:20px;padding:4px 12px;margin-bottom:16px}
   /* 임직원 명부 */
   .emp-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
   .emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
   .emp-card{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:16px;cursor:pointer;
     box-shadow:var(--shadow);transition:border-color .12s}
-  .emp-card:hover{border-color:#CFCFCF}
+  .emp-card:hover{border-color:#D5C0B2}
   .emp-card .ec-top{display:flex;align-items:center;gap:12px}
   .emp-avatar{width:44px;height:44px;border-radius:11px;background:var(--primary-soft);color:var(--primary);
     display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0}
   .emp-card .ec-name{font-size:15px;font-weight:800}
   .emp-card .ec-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
   .emp-card .ec-src{font-size:9.5px;font-weight:800;border-radius:20px;padding:2px 8px}
-  .emp-card .ec-body{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #F0F0F0}
+  .emp-card .ec-body{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid #F3EAE3}
   .emp-status{font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
   .emp-empty{text-align:center;color:var(--faint);font-size:13px;padding:70px 20px;line-height:1.7}
   /* 임직원 상세 (풀스크린 오버레이) */
@@ -483,24 +483,24 @@
   .fld input,.fld select,.fld textarea{border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit;
     font-size:12.5px;outline:0;color:var(--ink);background:#fff;width:100%}
   .fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
-  .fld input:disabled,.fld textarea:disabled,.fld select:disabled{background:#F5F5F5;color:#5B6672;cursor:default}
-  .fld .ro{padding:9px 10px;font-size:12.5px;background:#F5F5F5;border:1px solid var(--line);border-radius:8px;min-height:37px;color:var(--ink)}
+  .fld input:disabled,.fld textarea:disabled,.fld select:disabled{background:#F6F1EC;color:#5B6672;cursor:default}
+  .fld .ro{padding:9px 10px;font-size:12.5px;background:#F6F1EC;border:1px solid var(--line);border-radius:8px;min-height:37px;color:var(--ink)}
   /* 반복 테이블 (학력·경력·자격·가족·발령) */
   .rtable{width:100%;border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:12px}
   .rtable table{width:100%;border-collapse:collapse}
-  .rtable th{background:#F3F3F3;font-size:10.5px;font-weight:800;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-  .rtable td{padding:6px 8px;border-bottom:1px solid #F1F1F1;vertical-align:middle}
+  .rtable th{background:#F4ECE6;font-size:10.5px;font-weight:800;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .rtable td{padding:6px 8px;border-bottom:1px solid #F2E8E0;vertical-align:middle}
   .rtable tr:last-child td{border-bottom:0}
   .rtable td input,.rtable td select{width:100%;border:1px solid transparent;border-radius:6px;padding:6px 7px;font:inherit;font-size:12px;outline:0;background:transparent;color:var(--ink)}
   .rtable td input:focus,.rtable td select:focus{border-color:var(--primary);background:#fff}
   .rtable td input:disabled,.rtable td select:disabled{color:#2a2a2a}
   .rtable .row-del{background:none;border:0;color:var(--faint);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:5px}
-  .rtable .row-del:hover{background:#FBF2F0;color:#C0492D}
+  .rtable .row-del:hover{background:#F6ECE6;color:#6B4A3A}
   .rtable-add{margin-top:8px;font:inherit;font-size:11.5px;font-weight:700;color:var(--primary);background:var(--primary-soft);
-    border:1px solid #DADADA;border-radius:8px;padding:7px 12px;cursor:pointer}
-  .rtable-add:hover{background:#E4E4E4}
+    border:1px solid #DFCEC2;border-radius:8px;padding:7px 12px;cursor:pointer}
+  .rtable-add:hover{background:#E6D6C7}
   /* 구비서류 체크리스트 */
-  .doc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F1F1F1;font-size:12.5px}
+  .doc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F2E8E0;font-size:12.5px}
   .doc-row:last-child{border-bottom:0}
   .doc-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--primary);cursor:pointer}
   .doc-row .dr-name{flex:1}
@@ -509,16 +509,16 @@
   /* 편집 모드 토글 */
   .edit-toggle{display:flex;align-items:center;gap:8px}
   .edit-badge{font-size:10.5px;font-weight:800;border-radius:20px;padding:3px 10px}
-  .edit-badge.view{color:var(--muted);background:#F0F0F0}
-  .edit-badge.edit{color:#2A2A2A;background:#EDEDED}
+  .edit-badge.view{color:var(--muted);background:#F3EAE3}
+  .edit-badge.edit{color:#5A3A2B;background:#EFE3D8}
   /* 계약 임금 요약 카드 */
   .wage-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-  .wage-item{background:#F7F7F7;border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+  .wage-item{background:#F8F2ED;border:1px solid var(--line);border-radius:9px;padding:10px 12px}
   .wage-item .wl{font-size:10.5px;color:var(--muted);font-weight:700}
   .wage-item .wv{font-size:14px;font-weight:800;margin-top:3px}
-  .wage-item.hl{background:var(--primary-soft);border-color:#DADADA}
+  .wage-item.hl{background:var(--primary-soft);border-color:#DFCEC2}
   .wage-item.hl .wv{color:var(--primary)}
-  .law-note{font-size:11px;color:#333333;background:#F0F0F0;border:1px solid #DBDBDB;border-radius:9px;padding:9px 12px;margin-bottom:14px;line-height:1.55}
+  .law-note{font-size:11px;color:#6A4634;background:#F3EAE3;border:1px solid #DFD0C3;border-radius:9px;padding:9px 12px;margin-bottom:14px;line-height:1.55}
   .law-note b{font-weight:800}
   @media(max-width:820px){
     .gnb{overflow-x:auto}
@@ -537,16 +537,16 @@
   .cdo-tools{margin-left:auto;display:flex;gap:8px}
   .cdo-scroll{flex:1;overflow-y:auto;padding:24px;display:flex;justify-content:center}
   .cdo-paper{background:#fff;width:210mm;max-width:100%;min-height:297mm;padding:14mm 15mm;box-shadow:0 8px 40px rgba(0,0,0,.4);
-    font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#111;font-size:10.5px;line-height:1.4}
+    font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#3B2419;font-size:10.5px;line-height:1.4}
   /* 계약서 서식 */
-  .kd-title{text-align:center;font-size:20px;font-weight:800;letter-spacing:12px;padding:5px 0 11px;border:2px solid #111;margin-bottom:0}
+  .kd-title{text-align:center;font-size:20px;font-weight:800;letter-spacing:12px;padding:5px 0 11px;border:2px solid #3B2419;margin-bottom:0}
   .kd-table{width:100%;border-collapse:collapse;margin-bottom:0}
-  .kd-table td,.kd-table th{border:1px solid #333;padding:4px 6px;vertical-align:middle}
+  .kd-table td,.kd-table th{border:1px solid #6A4634;padding:4px 6px;vertical-align:middle}
   .kd-table .lbl{background:#ECECEC;font-weight:700;text-align:center;width:110px;white-space:nowrap}
   .kd-table .lbl2{background:#ECECEC;font-weight:700;text-align:center;width:90px;white-space:nowrap}
   .kd-table .ctr{text-align:center}
   .kd-sec-lbl{background:#DDDDDD;font-weight:800;text-align:center;writing-mode:vertical-rl;letter-spacing:3px;width:34px}
-  .kd-wage th{background:#F0F0F0;font-weight:700;text-align:center;font-size:10px}
+  .kd-wage th{background:#F3EAE3;font-weight:700;text-align:center;font-size:10px}
   .kd-wage td{font-size:10px}
   .kd-note{font-size:9.5px;line-height:1.45;padding:5px 6px}
   .kd-note ol{margin:0;padding-left:16px}
@@ -579,15 +579,21 @@
   .anno-pen-lbl{color:#AAAAAA;font-size:11px;font-weight:700}
   .anno-color{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
   .anno-color.on{border-color:#fff;box-shadow:0 0 0 2px #1a1a1a,0 0 0 3px #fff}
-  .anno-stage{flex:1;overflow:auto;display:flex;justify-content:center;padding:20px}
-  .anno-canvas-wrap{position:relative;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.4);align-self:flex-start}
+  .anno-stage{flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:20px}
+  .anno-canvas-wrap{position:relative;align-self:flex-start;width:min(800px,100%)}
   .anno-resume{width:800px;max-width:100%}
   .anno-resume img{display:block;width:100%}
   .anno-resume iframe{display:block;width:100%;height:1100px;border:0}
   .anno-resume .anno-doc{padding:32px 36px;font-family:"Malgun Gothic",sans-serif}
-  .anno-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .anno-page-stack{width:100%;display:flex;flex-direction:column;gap:14px}
+  .anno-page{position:relative;background:#fff;box-shadow:0 8px 40px rgba(0,0,0,.4);overflow:hidden}
+  .anno-page-bg,.anno-page-image{display:block;width:100%;height:auto}
+  .anno-page-body{position:relative;background:#fff}
+  .anno-page-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  .anno-canvas{display:none}
   @media(max-width:820px){
     .anno-bar{gap:6px}
+    .anno-stage{padding:12px}
     .anno-resume{width:100%}
   }
 
@@ -877,7 +883,7 @@
   <div id="hris-admin" class="module">
     <div class="mod-head">
       <div class="mod-head-top">
-        <div><h1>사용자 관리 <span style="font-size:11px;font-weight:800;color:#555555;background:#EEEEEE;border-radius:20px;padding:3px 10px;vertical-align:middle">관리자 전용</span></h1>
+        <div><h1>사용자 관리 <span style="font-size:11px;font-weight:800;color:#8A6650;background:#F0E6DD;border-radius:20px;padding:3px 10px;vertical-align:middle">관리자 전용</span></h1>
           <div class="sub">회원가입 신청을 승인하고, 사용자별로 메뉴 접근 권한을 부여합니다</div></div>
       </div>
     </div>
@@ -952,7 +958,7 @@
         </div>
         <button class="d-move" id="dPrev" onclick="moveStage(-1)">← 이전</button>
         <button class="d-move primary" id="dNext" onclick="moveStage(1)">다음 →</button>
-        <button class="d-move" id="dRej" style="color:#C0492D;border-color:#E8CDC6" onclick="openRej()">불합격</button>
+        <button class="d-move" id="dRej" style="color:#6B4A3A;border-color:#DCC8BB" onclick="openRej()">불합격</button>
         <button class="x" onclick="closeDetail()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
@@ -1055,10 +1061,10 @@
     <div class="anno-title">✍️ 이력서 필기</div>
     <div class="anno-tools">
       <span class="anno-pen-lbl">펜색</span>
-      <button class="anno-color on" data-color="#E23B2E" style="background:#E23B2E" onclick="setPenColor('#E23B2E',this)"></button>
-      <button class="anno-color" data-color="#333333" style="background:#333333" onclick="setPenColor('#333333',this)"></button>
-      <button class="anno-color" data-color="#111111" style="background:#111111" onclick="setPenColor('#111111',this)"></button>
-      <button class="anno-color" data-color="#666666" style="background:#666666" onclick="setPenColor('#666666',this)"></button>
+      <button class="anno-color on" data-color="#7A5541" style="background:#7A5541" onclick="setPenColor('#7A5541',this)"></button>
+      <button class="anno-color" data-color="#6A4634" style="background:#6A4634" onclick="setPenColor('#6A4634',this)"></button>
+      <button class="anno-color" data-color="#3B2419" style="background:#3B2419" onclick="setPenColor('#3B2419',this)"></button>
+      <button class="anno-color" data-color="#826654" style="background:#826654" onclick="setPenColor('#826654',this)"></button>
       <span class="anno-pen-lbl" style="margin-left:8px">굵기</span>
       <input type="range" min="1" max="12" value="3" oninput="setPenWidth(this.value)" style="width:80px">
       <button class="btn ghost" onclick="annoUndo()">↩ 실행취소</button>
@@ -1079,10 +1085,10 @@
 const $=s=>document.querySelector(s);
 const STAGES=[
   {id:"inbox",name:"서류 접수",raw:"#6B7684"},
-  {id:"review",name:"서류 검토",raw:"#444444"},
-  {id:"interview1",name:"1차 면접",raw:"#666666"},
-  {id:"interview2",name:"최종 면접",raw:"#666666"},
-  {id:"pass",name:"최종 합격",raw:"#2A2A2A"},
+  {id:"review",name:"서류 검토",raw:"#7A5541"},
+  {id:"interview1",name:"1차 면접",raw:"#826654"},
+  {id:"interview2",name:"최종 면접",raw:"#826654"},
+  {id:"pass",name:"최종 합격",raw:"#5A3A2B"},
 ];
 const stageIdx=id=>Math.max(0,STAGES.findIndex(s=>s.id===id));
 function today(){const d=new Date();return String(d.getMonth()+1).padStart(2,"0")+"."+String(d.getDate()).padStart(2,"0");}
@@ -1315,7 +1321,14 @@ let curJob=null;
 let openId=null, dragId=null, editMode=false, blobUrl=null, pickedFile=null;
 let nextJobId=1, nextCandId=101;
 const ALL_PERMS=["ats","contract","employees","labor"];
-const PERM_LABELS={ats:"채용관리(ATS)",contract:"근로계약",employees:"임직원·인사기록카드",labor:"노무관리"};
+const SENSITIVE_PERMS=["hrPayroll"];
+const PERM_LABELS={
+  ats:"채용관리(ATS)",
+  contract:"근로계약",
+  employees:"임직원·인사기록카드",
+  labor:"노무관리",
+  hrPayroll:"민감 인사정보(급여·세액)"
+};
 function isAdmin(){ return session && session.email && session.email.toLowerCase()===ADMIN_EMAIL.toLowerCase(); }
 function findUser(email){ if(!email) return null; return USERS.find(u=>u.email&&u.email.toLowerCase()===email.toLowerCase())||null; }
 function hasPerm(mod){
@@ -1326,8 +1339,12 @@ function hasPerm(mod){
 }
 function blankUser(email,name){
   return { email:(email||"").toLowerCase(), name:name||"", status:"pending",
-    perms:{ats:false,contract:false,employees:false,labor:false},
+    perms:{ats:false,contract:false,employees:false,labor:false,hrPayroll:false},
     requestedAt:new Date().toISOString(), approvedAt:null };
+}
+function canViewHrSensitive(){
+  if(isAdmin()) return true;
+  return !!(curUser && curUser.perms && curUser.perms.hrPayroll);
 }
 function computeIds(){
   nextJobId=Math.max(0,...JOBS.map(j=>+j.id||0))+1;
@@ -1555,7 +1572,7 @@ function renderBoard(){
 function card(c,j){
   const a=analyze(c,j); const r=reapplyInfo(c); const an=(c.analyzed!==false);
   const sc = c.aiResult ? c.aiResult.score : a.score;
-  const bd = c.aiResult ? (sc>=75?["","#2A2A2A","#EDEDED"]:sc>=55?["","#444444","#EFEFEF"]:["","#555555","#EEEEEE"]) : a.band;
+  const bd = c.aiResult ? (sc>=75?["","#5A3A2B","#EFE3D8"]:sc>=55?["","#7A5541","#F1E5DB"]:["","#8A6650","#F0E6DD"]) : a.band;
   const rate=[1,2,3,4,5].map(i=>`<i class="${i<=c.rate?'on':''}"></i>`).join("");
   return `<div class="card" draggable="true" onclick="openDetail(${c.id})"
       ondragstart="dragStart(event,${c.id})" ondragend="dragEnd(event)">
@@ -1565,7 +1582,7 @@ function card(c,j){
     ${r?`<div class="reapply-badge">⚠ ${r.type==='rejected'?'재지원 · 과거 불합격':'중복지원'}</div>`:""}
     <div class="cf">${an
         ?`<span class="mini-fit" style="color:${bd[1]};background:${bd[2]}">${c.aiResult?"✦ ":""}적합 ${sc}</span>`
-        :`<span class="mini-fit" style="color:var(--faint);background:#F0F0F0">미분석</span>`}
+        :`<span class="mini-fit" style="color:var(--faint);background:#F3EAE3">미분석</span>`}
       <span class="rate">${rate}</span><span class="cdate">${c.applied}</span></div>
   </div>`;
 }
@@ -1640,7 +1657,7 @@ function analyze(c,j){
   if(skills.length<2)weak.push("직무 핵심 역량 키워드 부족");
   if(neg.length)weak.push(`검토 필요 표현: ${neg.join("·")}`);
   if(!weak.length)weak.push("두드러진 약점 없음 — 면접에서 심화 확인 권장");
-  const band=score>=75?["적합도 높음","#2A2A2A","#EDEDED"]:score>=55?["적합도 보통","#444444","#EFEFEF"]:["적합도 낮음","#555555","#EEEEEE"];
+  const band=score>=75?["적합도 높음","#5A3A2B","#EFE3D8"]:score>=55?["적합도 보통","#7A5541","#F1E5DB"]:["적합도 낮음","#8A6650","#F0E6DD"];
   return {score,strong,weak,band};
 }
 
@@ -1721,7 +1738,7 @@ function openDetail(id){openId=id;editMode=false;renderDetail();$("#detail").cla
 function renderDetail(){
   const c=findCand(openId); if(!c)return;
   const j=jobOf(openId); const s=STAGES[stageIdx(c.stage)];
-  $("#dStage").textContent=c.rejected?"불합격":s.name;$("#dStage").style.color=c.rejected?"#C0492D":s.raw;
+  $("#dStage").textContent=c.rejected?"불합격":s.name;$("#dStage").style.color=c.rejected?"#6B4A3A":s.raw;
   $("#dName").textContent=c.name;$("#dRole").textContent=`${c.role} · ${c.hosp}`;
   const b=resumeSrc(c); let main;
   if(b&&b.mime.includes("pdf")) main=`<iframe class="resume-frame" src="${b.url}"></iframe>`;
@@ -1744,18 +1761,18 @@ function renderDetail(){
   $("#dNext").textContent=i>=STAGES.length-1?"최종 단계":`${STAGES[i+1].name} →`;
   const rb=$("#dRej");
   if(rej){rb.textContent="↺ 복원";rb.style.color="";rb.style.borderColor="";rb.onclick=restoreFromDetail;}
-  else{rb.textContent="불합격";rb.style.color="#C0492D";rb.style.borderColor="#E8CDC6";rb.onclick=openRej;}
+  else{rb.textContent="불합격";rb.style.color="#6B4A3A";rb.style.borderColor="#DCC8BB";rb.onclick=openRej;}
 }
 function sideView(c,j){
   const a=analyze(c,j);
   const rate=[1,2,3,4,5].map(i=>`<i class="${i<=c.rate?'on':''}"></i>`).join("");
   const rp=reapplyInfo(c);
-  const rejB=c.rejected?`<div class="reapply-banner" style="background:#F1E4E1;border-color:#E0B3A8;color:#8F2E1B">🚫 <b>불합격 처리됨</b> · ${esc(c.rejectStage||"")} 전형 · 사유: ${esc(c.rejectReason||"(미입력)")}</div>`:"";
+  const rejB=c.rejected?`<div class="reapply-banner" style="background:#EADDD4;border-color:#C9AB98;color:#4E3227">🚫 <b>불합격 처리됨</b> · ${esc(c.rejectStage||"")} 전형 · 사유: ${esc(c.rejectReason||"(미입력)")}</div>`:"";
   const rpB=(!c.rejected&&rp)?`<div class="reapply-banner">⚠ <b>${rp.type==='rejected'?'재지원 감지':'중복지원 감지'}</b> · ${esc(rp.job)} ${rp.stage?esc(rp.stage)+' 전형 ':''}${rp.type==='rejected'?'불합격'+(rp.reason?' ('+esc(rp.reason)+')':''):'지원 중'}</div>`:"";
   const ai=c.aiResult;
   const useAI = !!ai;
   const score = useAI ? ai.score : a.score;
-  const band  = useAI ? (score>=75?["적합도 높음","#2A2A2A","#EDEDED"]:score>=55?["적합도 보통","#444444","#EFEFEF"]:["적합도 낮음","#C0492D","#EEEEEE"]) : a.band;
+  const band  = useAI ? (score>=75?["적합도 높음","#5A3A2B","#EFE3D8"]:score>=55?["적합도 보통","#7A5541","#F1E5DB"]:["적합도 낮음","#6B4A3A","#F0E6DD"]) : a.band;
   const strongList = useAI ? (ai.strengths||[]) : a.strong;
   const weakList   = useAI ? (ai.weaknesses||[]) : a.weak;
   const analysisHtml = (c.analyzed!==false) ? `
@@ -1783,13 +1800,13 @@ function sideView(c,j){
   const hireHtml = (c.stage==="pass" && !c.rejected) ? `
     <div class="side-sec">
       <div class="sh"><h4>🎉 최종 합격 · 입사 처리</h4></div>
-      <div style="background:#F0F9F4;border:1px solid #D5D5D5;border-radius:11px;padding:14px">
+      <div style="background:#F0F9F4;border:1px solid #DCCABD;border-radius:11px;padding:14px">
         ${alreadyEmp ? `
-          <div style="font-size:12.5px;color:#2A2A2A;line-height:1.6;margin-bottom:10px">
+          <div style="font-size:12.5px;color:#5A3A2B;line-height:1.6;margin-bottom:10px">
             ✓ 이미 임직원으로 전환되었습니다.<br>입사일: <b>${esc(alreadyEmp.joinDate||"미정")}</b></div>
           <button class="btn" style="width:100%;justify-content:center" onclick="gotoEmpContract(${alreadyEmp.id})">📝 근로계약 작성/수정하러 가기</button>
         ` : `
-          <div style="font-size:12px;color:#2A2A2A;line-height:1.55;margin-bottom:10px">
+          <div style="font-size:12px;color:#5A3A2B;line-height:1.55;margin-bottom:10px">
             입사일자를 입력하면 임직원으로 등록되고, <b>근로계약 작성</b>으로 이어집니다.</div>
           <div class="efield" style="margin-bottom:10px"><label>입사일자</label>
             <input id="hireDate" type="date" value="${esc(c.hireDate||todayISO())}" oninput="saveHireDate()"></div>
@@ -2306,10 +2323,10 @@ function renderItv(){
   $("#itvJob").textContent=`${j.title} · ${c.role}`;
 
   // ── 면접관 식별 ──
-  let html=`<div class="rec-panel" style="background:#F3F3F3;border-color:#DADADA">
-    <div style="font-size:11px;font-weight:800;color:#444444;margin-bottom:8px">👤 면접관 정보 (이 면접에서 내가 남기는 질문·평가에 기록됩니다)</div>
+  let html=`<div class="rec-panel" style="background:#F4ECE6;border-color:#DFCEC2">
+    <div style="font-size:11px;font-weight:800;color:#7A5541;margin-bottom:8px">👤 면접관 정보 (이 면접에서 내가 남기는 질문·평가에 기록됩니다)</div>
     <div class="two">
-      <div class="efield"><label>면접관 ID</label><input value="${esc((currentInterviewer&&currentInterviewer.id)||"")}" disabled style="background:#EFEFEF"></div>
+      <div class="efield"><label>면접관 ID</label><input value="${esc((currentInterviewer&&currentInterviewer.id)||"")}" disabled style="background:#F1E5DB"></div>
       <div class="efield"><label>면접관 이름</label><input id="itvInterviewer" value="${esc((currentInterviewer&&currentInterviewer.name)||"")}" placeholder="예: 김인사 (표시용 이름)" oninput="setInterviewerName(this.value)"></div>
     </div>
   </div>`;
@@ -2320,7 +2337,7 @@ function renderItv(){
       <button class="btn ghost" onclick="openAnnotate()">✍️ 이력서에 필기 (펜/터치)</button>
       <span style="font-size:11.5px;color:var(--faint)">패드·태블릿에서 애플펜슬 등으로 이력서 위에 메모·표시할 수 있습니다.</span>
     </div>
-    ${Object.keys(c.annotations||{}).length?`<div style="font-size:11.5px;color:#2A2A2A;margin-top:8px">✓ 저장된 필기 ${Object.keys(c.annotations).length}건 — "이력서에 필기"에서 확인·수정</div>`:""}
+    ${Object.keys(c.annotations||{}).length?`<div style="font-size:11.5px;color:#5A3A2B;margin-top:8px">✓ 저장된 필기 ${Object.keys(c.annotations).length}건 — "이력서에 필기"에서 확인·수정</div>`:""}
   </div>`;
 
   // ── 녹취 파일 / 녹음 ──
@@ -2359,11 +2376,11 @@ function renderItv(){
   if(c.itvEval){
     const isAI=!!c.itvEval.ai;
     html+=`<div class="itv-summary">
-      <div style="font-size:10.5px;font-weight:800;color:#444444;margin-bottom:4px">✦ 면접 답변 평가 ${isAI?"(AI 분석)":"(데모 · 규칙 기반)"}</div>
+      <div style="font-size:10.5px;font-weight:800;color:#7A5541;margin-bottom:4px">✦ 면접 답변 평가 ${isAI?"(AI 분석)":"(데모 · 규칙 기반)"}</div>
       <span class="big">${c.itvEval.total}</span><span style="color:var(--faint);font-weight:700"> /100</span>
       <div class="fit-note" style="margin-top:6px">${esc(c.itvEval.comment)}${c.itvEval.note?" · "+esc(c.itvEval.note):""}</div>
-      ${isAI&&(c.itvEval.strengths||[]).length?`<div style="margin-top:10px;font-size:11.5px;color:#2A2A2A"><b>강점</b> · ${(c.itvEval.strengths||[]).map(esc).join(" / ")}</div>`:""}
-      ${isAI&&(c.itvEval.weaknesses||[]).length?`<div style="margin-top:4px;font-size:11.5px;color:#C0492D"><b>보완</b> · ${(c.itvEval.weaknesses||[]).map(esc).join(" / ")}</div>`:""}
+      ${isAI&&(c.itvEval.strengths||[]).length?`<div style="margin-top:10px;font-size:11.5px;color:#5A3A2B"><b>강점</b> · ${(c.itvEval.strengths||[]).map(esc).join(" / ")}</div>`:""}
+      ${isAI&&(c.itvEval.weaknesses||[]).length?`<div style="margin-top:4px;font-size:11.5px;color:#6B4A3A"><b>보완</b> · ${(c.itvEval.weaknesses||[]).map(esc).join(" / ")}</div>`:""}
       </div>`;
   }
   html+=`<button class="btn" id="aiEvalBtn" style="width:100%;justify-content:center;margin:6px 0 8px" onclick="aiEvalTranscript()">✦ AI 녹취록 평가 실행</button>`;
@@ -2421,75 +2438,213 @@ function evalLogDel(i){ const c=findCand(itvId); if(c&&c.evalLog){ c.evalLog.spl
 function nowStamp(){ const d=new Date(); return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; }
 
 /* ═══════ 이력서 필기 (펜/터치/마우스) ═══════ */
-let annoCtx=null, annoDrawing=false, annoColor="#E23B2E", annoWidth=3, annoStrokes=[], annoCur=null;
-function openAnnotate(){
+let annoColor="#7A5541", annoWidth=3, annoPages=[], annoUndoStack=[], annoDocType="single";
+function cloneAnnoData(v){ return JSON.parse(JSON.stringify(v||[])); }
+function getSavedAnnoPages(c){
+  const raw=c&&c.annotations&&c.annotations.main;
+  if(raw && raw.version===2 && Array.isArray(raw.pages)) return cloneAnnoData(raw.pages);
+  if(Array.isArray(raw)) return [{pageNo:1,strokes:cloneAnnoData(raw)}];
+  return [];
+}
+function findSavedPage(saved,pageNo){ return (saved||[]).find(p=>Number(p.pageNo||1)===Number(pageNo)); }
+function getAnnoFitWidth(){
+  const stage=document.getElementById("annoStage");
+  const w=(stage&&stage.clientWidth)?stage.clientWidth-40:800;
+  return Math.max(280, Math.min(800, w||800));
+}
+function makeAnnoCanvas(pageEl, cssWidth, cssHeight){
+  const dpr=Math.max(1, window.devicePixelRatio||1);
+  const canvas=document.createElement('canvas');
+  canvas.className='anno-page-canvas';
+  canvas.style.width=cssWidth+'px';
+  canvas.style.height=cssHeight+'px';
+  canvas.width=Math.max(1, Math.round(cssWidth*dpr));
+  canvas.height=Math.max(1, Math.round(cssHeight*dpr));
+  pageEl.style.width=cssWidth+'px';
+  pageEl.style.height=cssHeight+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  return {canvas,ctx,cssWidth,cssHeight,dpr};
+}
+function initAnnoPage(pageEl,pageNo,cssWidth,cssHeight,savedStrokes){
+  const built=makeAnnoCanvas(pageEl,cssWidth,cssHeight);
+  pageEl.appendChild(built.canvas);
+  const state={pageNo,el:pageEl,canvas:built.canvas,ctx:built.ctx,cssWidth:built.cssWidth,cssHeight:built.cssHeight,dpr:built.dpr,strokes:cloneAnnoData(savedStrokes||[]),current:null,drawing:false};
+  built.canvas.onpointerdown=(e)=>annoStart(e,state);
+  built.canvas.onpointermove=(e)=>annoMove(e,state);
+  built.canvas.onpointerup=(e)=>annoEnd(e,state);
+  built.canvas.onpointerleave=(e)=>annoEnd(e,state);
+  built.canvas.onpointercancel=(e)=>annoEnd(e,state);
+  annoPages.push(state);
+  redrawAnnoPage(state);
+}
+async function renderAnnotatePdf(url,wrap,saved){
+  wrap.innerHTML='<div class="anno-page-stack" id="annoPageStack"></div>';
+  const holder=wrap.querySelector('#annoPageStack');
+  const pdf=await pdfjsLib.getDocument(url).promise;
+  const cssWidth=getAnnoFitWidth();
+  annoPages=[];
+  annoUndoStack=[];
+  annoDocType='pdf';
+  for(let pageNo=1; pageNo<=pdf.numPages; pageNo++){
+    const page=await pdf.getPage(pageNo);
+    const base=page.getViewport({scale:1});
+    const scale=cssWidth/base.width;
+    const viewport=page.getViewport({scale});
+    const pageEl=document.createElement('div');
+    pageEl.className='anno-page';
+    const bg=document.createElement('canvas');
+    bg.className='anno-page-bg';
+    bg.width=Math.max(1, Math.round(viewport.width));
+    bg.height=Math.max(1, Math.round(viewport.height));
+    bg.style.width=Math.round(viewport.width)+'px';
+    bg.style.height=Math.round(viewport.height)+'px';
+    await page.render({canvasContext:bg.getContext('2d'),viewport}).promise;
+    pageEl.appendChild(bg);
+    holder.appendChild(pageEl);
+    const savedPage=findSavedPage(saved,pageNo);
+    initAnnoPage(pageEl,pageNo,Math.round(viewport.width),Math.round(viewport.height),(savedPage&&savedPage.strokes)||[]);
+  }
+}
+function renderAnnotateFallback(c,wrap,saved){
+  wrap.innerHTML='<div class="anno-page-stack" id="annoPageStack"></div>';
+  const holder=wrap.querySelector('#annoPageStack');
+  const pageEl=document.createElement('div');
+  pageEl.className='anno-page';
+  const b=resumeSrc(c);
+  annoPages=[];
+  annoUndoStack=[];
+  annoDocType=(b&&b.mime&&b.mime.includes("pdf"))?'iframe':'single';
+  if(b&&b.mime&&b.mime.includes("pdf")){
+    pageEl.innerHTML=`<iframe src="${b.url}"></iframe>`;
+    holder.appendChild(pageEl);
+    requestAnimationFrame(()=>{
+      initAnnoPage(pageEl,1,getAnnoFitWidth(),1100,((findSavedPage(saved,1)||{}).strokes)||[]);
+    });
+    return;
+  }
+  if(b&&b.mime&&b.mime.startsWith("image")){
+    const img=document.createElement('img');
+    img.className='anno-page-image';
+    img.src=b.url;
+    pageEl.appendChild(img);
+    holder.appendChild(pageEl);
+    img.onload=()=>{
+      const cssWidth=getAnnoFitWidth();
+      const cssHeight=Math.max(200, Math.round(cssWidth*(img.naturalHeight/Math.max(1,img.naturalWidth))));
+      img.style.width=cssWidth+'px';
+      img.style.height=cssHeight+'px';
+      initAnnoPage(pageEl,1,cssWidth,cssHeight,((findSavedPage(saved,1)||{}).strokes)||[]);
+    };
+    return;
+  }
+  pageEl.innerHTML=`<div class="anno-page-body"><div class="anno-doc"><h2 style="font-size:20px;font-weight:800;margin-bottom:4px">${esc(c.name)}</h2>
+      <div style="color:#826654;font-size:13px;margin-bottom:16px">${esc(c.role)} · ${esc(c.hosp||"")}</div>
+      ${(c.hl||[]).map(h=>`<div style="font-size:14px;line-height:1.9;border-bottom:1px solid #eee;padding:4px 0">· ${esc(h)}</div>`).join("")}
+      <div style="margin-top:24px;color:#aaa;font-size:12px">※ 첨부 이력서 파일이 없어 요약 정보를 표시합니다. 이 위에 자유롭게 필기하세요.</div></div></div>`;
+  holder.appendChild(pageEl);
+  requestAnimationFrame(()=>{
+    const body=pageEl.querySelector('.anno-page-body');
+    const rect=body.getBoundingClientRect();
+    initAnnoPage(pageEl,1,Math.round(rect.width),Math.round(rect.height),((findSavedPage(saved,1)||{}).strokes)||[]);
+  });
+}
+async function openAnnotate(){
   const c=findCand(itvId); if(!c) return;
   const wrap=document.getElementById("annoResume");
-  // 이력서 배경 렌더 (이미지/ PDF / 텍스트 문서)
   const b=resumeSrc(c);
-  if(b&&b.mime&&b.mime.includes("pdf")){
-    wrap.innerHTML=`<iframe src="${b.url}"></iframe>`;
-  } else if(b&&b.mime&&b.mime.startsWith("image")){
-    wrap.innerHTML=`<img id="annoBgImg" src="${b.url}">`;
-  } else {
-    // 첨부 파일이 없으면 하이라이트 기반 간이 이력서
-    wrap.innerHTML=`<div class="anno-doc"><h2 style="font-size:20px;font-weight:800;margin-bottom:4px">${esc(c.name)}</h2>
-      <div style="color:#666;font-size:13px;margin-bottom:16px">${esc(c.role)} · ${esc(c.hosp||"")}</div>
-      ${(c.hl||[]).map(h=>`<div style="font-size:14px;line-height:1.9;border-bottom:1px solid #eee;padding:4px 0">· ${esc(h)}</div>`).join("")}
-      <div style="margin-top:24px;color:#aaa;font-size:12px">※ 첨부 이력서 파일이 없어 요약 정보를 표시합니다. 이 위에 자유롭게 필기하세요.</div></div>`;
-  }
+  const saved=getSavedAnnoPages(c);
   document.getElementById("annotateOverlay").classList.add("show");
-  // 캔버스 준비 (렌더 후 크기 맞춤)
-  setTimeout(setupAnnoCanvas, 120);
+  wrap.innerHTML='<div class="anno-doc" style="text-align:center;color:#826654">이력서 불러오는 중...</div>';
+  if(b&&b.mime&&b.mime.includes("pdf")&&window.pdfjsLib){
+    try{ await renderAnnotatePdf(b.url,wrap,saved); }
+    catch(e){ console.warn("annotate pdf",e); renderAnnotateFallback(c,wrap,saved); }
+  } else {
+    renderAnnotateFallback(c,wrap,saved);
+  }
 }
-function setupAnnoCanvas(){
-  const wrap=document.getElementById("annoWrap");
-  const cv=document.getElementById("annoCanvas");
-  const rect=wrap.getBoundingClientRect();
-  cv.width=rect.width; cv.height=rect.height;
-  annoCtx=cv.getContext("2d");
-  annoCtx.lineCap="round"; annoCtx.lineJoin="round";
-  // 기존 저장된 필기 불러오기
-  const c=findCand(itvId);
-  annoStrokes = (c && c.annotations && c.annotations.main) ? JSON.parse(JSON.stringify(c.annotations.main)) : [];
-  redrawAnno();
-  // 이벤트 (pointer = 펜/터치/마우스 통합)
-  cv.onpointerdown=annoStart; cv.onpointermove=annoMove;
-  cv.onpointerup=annoEnd; cv.onpointerleave=annoEnd; cv.onpointercancel=annoEnd;
+function annoPos(e,page){
+  const r=page.canvas.getBoundingClientRect();
+  return {
+    x:((e.clientX-r.left)/Math.max(1,r.width))*page.cssWidth,
+    y:((e.clientY-r.top)/Math.max(1,r.height))*page.cssHeight
+  };
 }
-function annoPos(e){
-  const cv=document.getElementById("annoCanvas"); const r=cv.getBoundingClientRect();
-  return { x:(e.clientX-r.left)*(cv.width/r.width), y:(e.clientY-r.top)*(cv.height/r.height) };
+function annoStart(e,page){
+  e.preventDefault();
+  page.drawing=true;
+  page.current={ color:annoColor, width:annoWidth, pts:[annoPos(e,page)] };
+  try{ e.target.setPointerCapture(e.pointerId); }catch(_){ }
 }
-function annoStart(e){ e.preventDefault(); annoDrawing=true; const p=annoPos(e);
-  annoCur={ color:annoColor, width:annoWidth, pts:[p] }; }
-function annoMove(e){ if(!annoDrawing||!annoCur) return; e.preventDefault();
-  annoCur.pts.push(annoPos(e)); redrawAnno(); drawStroke(annoCur); }
-function annoEnd(e){ if(!annoDrawing) return; annoDrawing=false;
-  if(annoCur&&annoCur.pts.length>1) annoStrokes.push(annoCur); annoCur=null; }
-function drawStroke(s){
-  if(!annoCtx||!s.pts.length) return;
-  annoCtx.strokeStyle=s.color; annoCtx.lineWidth=s.width;
-  annoCtx.beginPath(); annoCtx.moveTo(s.pts[0].x,s.pts[0].y);
-  for(let i=1;i<s.pts.length;i++) annoCtx.lineTo(s.pts[i].x,s.pts[i].y);
-  annoCtx.stroke();
+function annoMove(e,page){
+  if(!page.drawing||!page.current) return;
+  e.preventDefault();
+  page.current.pts.push(annoPos(e,page));
+  redrawAnnoPage(page);
+  drawStroke(page,page.current);
 }
-function redrawAnno(){ if(!annoCtx) return; const cv=document.getElementById("annoCanvas");
-  annoCtx.clearRect(0,0,cv.width,cv.height); annoStrokes.forEach(drawStroke); }
+function annoEnd(e,page){
+  if(!page.drawing) return;
+  page.drawing=false;
+  if(page.current&&page.current.pts.length>1){
+    page.strokes.push(page.current);
+    annoUndoStack.push({pageNo:page.pageNo});
+  }
+  page.current=null;
+  try{ e.target.releasePointerCapture(e.pointerId); }catch(_){ }
+}
+function drawStroke(page,s){
+  if(!page||!page.ctx||!s||!s.pts.length) return;
+  page.ctx.strokeStyle=s.color;
+  page.ctx.lineWidth=s.width;
+  page.ctx.beginPath();
+  page.ctx.moveTo(s.pts[0].x,s.pts[0].y);
+  for(let i=1;i<s.pts.length;i++) page.ctx.lineTo(s.pts[i].x,s.pts[i].y);
+  page.ctx.stroke();
+}
+function redrawAnnoPage(page){
+  if(!page||!page.ctx) return;
+  page.ctx.clearRect(0,0,page.cssWidth,page.cssHeight);
+  page.strokes.forEach(s=>drawStroke(page,s));
+}
+function redrawAnno(){ annoPages.forEach(redrawAnnoPage); }
 function setPenColor(col,btn){ annoColor=col; document.querySelectorAll(".anno-color").forEach(b=>b.classList.remove("on")); if(btn)btn.classList.add("on"); }
 function setPenWidth(w){ annoWidth=parseInt(w)||3; }
-function annoUndo(){ annoStrokes.pop(); redrawAnno(); }
-function annoClear(){ if(confirm("필기를 모두 지울까요?")){ annoStrokes=[]; redrawAnno(); } }
+function annoUndo(){
+  const last=annoUndoStack.pop();
+  if(!last) return;
+  const page=annoPages.find(p=>p.pageNo===last.pageNo);
+  if(!page||!page.strokes.length) return;
+  page.strokes.pop();
+  redrawAnnoPage(page);
+}
+function annoClear(){
+  if(!confirm("필기를 모두 지울까요?")) return;
+  annoPages.forEach(page=>{ page.strokes=[]; page.current=null; redrawAnnoPage(page); });
+  annoUndoStack=[];
+}
 function annoSave(){
   const c=findCand(itvId); if(!c) return;
   c.annotations=c.annotations||{};
-  c.annotations.main=annoStrokes;   // 벡터(획) 데이터로 저장 — 용량 작고 재편집 가능
+  if(annoPages.length<=1 && annoDocType!=="pdf"){
+    c.annotations.main=cloneAnnoData((annoPages[0]&&annoPages[0].strokes)||[]);
+  }else{
+    c.annotations.main={version:2,pages:annoPages.map(p=>({pageNo:p.pageNo,strokes:cloneAnnoData(p.strokes)}))};
+  }
   save();
   alert("이력서 필기를 저장했습니다.");
   closeAnnotate();
   renderItv();
 }
-function closeAnnotate(){ document.getElementById("annotateOverlay").classList.remove("show"); }
+function closeAnnotate(){
+  annoPages=[];
+  annoUndoStack=[];
+  const wrap=document.getElementById("annoResume");
+  if(wrap) wrap.innerHTML='';
+  document.getElementById("annotateOverlay").classList.remove("show");
+}
 
 /* ── reset ── */
 async function cloudRefresh(){ await load(); curJob=(JOBS.find(j=>j.id===curJob)?curJob:(JOBS[0]&&JOBS[0].id)); computeIds(); closeDetail(); render(); }
@@ -2557,7 +2712,7 @@ function renderAdmin(){
         <div class="user-meta">신청: ${esc((u.requestedAt||"").slice(0,10))}</div></div>
       <div class="user-actions">
         <button class="btn" onclick="approveUser('${esc(u.email)}')">✓ 승인</button>
-        <button class="btn ghost" style="color:#C0492D" onclick="rejectUser('${esc(u.email)}')">거절</button>
+        <button class="btn ghost" style="color:#6B4A3A" onclick="rejectUser('${esc(u.email)}')">거절</button>
       </div>
     </div>`).join("");
   }
@@ -2570,17 +2725,17 @@ function renderAdmin(){
   else {
     html+=others.map(u=>{
       const isRej=u.status==="rejected";
-      const permChecks=ALL_PERMS.map(p=>`<label class="perm-chk ${(u.perms&&u.perms[p])?'on':''}">
+      const permChecks=[...ALL_PERMS, ...SENSITIVE_PERMS].map(p=>`<label class="perm-chk ${(u.perms&&u.perms[p])?'on':''}">
         <input type="checkbox" ${(u.perms&&u.perms[p])?"checked":""} ${isRej?"disabled":""} onchange="setUserPerm('${esc(u.email)}','${p}',this.checked)">
         ${PERM_LABELS[p]}</label>`).join("");
       return `<div class="user-row ${isRej?'rejected':'approved'}">
         <div class="user-info">
-          <div class="user-name">${esc(u.name||"(이름없음)")} ${isRej?'<span style="color:#C0492D;font-size:10.5px;font-weight:800">· 거절됨</span>':'<span style="color:#2A2A2A;font-size:10.5px;font-weight:800">· 승인됨</span>'}</div>
+          <div class="user-name">${esc(u.name||"(이름없음)")} ${isRej?'<span style="color:#6B4A3A;font-size:10.5px;font-weight:800">· 거절됨</span>':'<span style="color:#5A3A2B;font-size:10.5px;font-weight:800">· 승인됨</span>'}</div>
           <div class="user-email">${esc(u.email)}</div>
           <div class="perm-row">${permChecks}</div>
         </div>
         <div class="user-actions">
-          ${isRej?`<button class="btn" onclick="approveUser('${esc(u.email)}')">다시 승인</button>`:`<button class="btn ghost" style="color:#C0492D" onclick="rejectUser('${esc(u.email)}')">접근 차단</button>`}
+          ${isRej?`<button class="btn" onclick="approveUser('${esc(u.email)}')">다시 승인</button>`:`<button class="btn ghost" style="color:#6B4A3A" onclick="rejectUser('${esc(u.email)}')">접근 차단</button>`}
           <button class="btn ghost" onclick="deleteUser('${esc(u.email)}')">삭제</button>
         </div>
       </div>`;
@@ -2593,7 +2748,8 @@ function approveUser(email){
   const u=findUser(email); if(!u) return;
   u.status="approved"; u.approvedAt=new Date().toISOString();
   // 처음 승인 시 기본 권한: ATS만 부여 (관리자가 추가로 열어줌)
-  if(!u.perms) u.perms={ats:false,contract:false,employees:false,labor:false};
+  if(!u.perms) u.perms={ats:false,contract:false,employees:false,labor:false,hrPayroll:false};
+  if(u.perms.hrPayroll===undefined) u.perms.hrPayroll=false;
   if(!ALL_PERMS.some(p=>u.perms[p])) u.perms.ats=true;
   save(); renderAdmin();
 }
@@ -2609,7 +2765,8 @@ function deleteUser(email){
 }
 function setUserPerm(email,perm,val){
   const u=findUser(email); if(!u) return;
-  u.perms=u.perms||{}; u.perms[perm]=val; save();
+  u.perms=u.perms||{ats:false,contract:false,employees:false,labor:false,hrPayroll:false};
+  u.perms[perm]=val; save();
   // 체크박스 라벨 하이라이트만 갱신
   renderAdmin();
 }
@@ -2793,7 +2950,7 @@ function renderEmployees(){
   if(empView==="active" && conv.length){
     html+=`<div class="law-note" style="margin-bottom:14px">🎓 <b>최종 합격자 ${conv.length}명</b>이 임직원 전환을 기다리고 있습니다.</div>`;
     html+=`<div class="emp-grid" style="margin-bottom:22px">`+conv.map(({c,j})=>`
-      <div class="emp-card" style="border-style:dashed;border-color:#CCCCCC;background:#F7F7F7">
+      <div class="emp-card" style="border-style:dashed;border-color:#CBB5A5;background:#F8F2ED">
         <div class="ec-top">
           ${empPhotoHTML(null,c.name,44)}
           <div style="flex:1;min-width:0"><div class="ec-name">${esc(c.name)}</div>
@@ -2827,8 +2984,8 @@ function renderEmployees(){
   grid.innerHTML=html;
 }
 function empCardHTML(e){
-  const srcBadge=e.source==="ats"?`<span class="ec-src" style="color:#2A2A2A;background:#EDEDED">ATS 전환</span>`:`<span class="ec-src" style="color:#444444;background:#EFEFEF">직접 등록</span>`;
-  const st=e.status==="leave"?`<span class="emp-status" style="color:#B23A22;background:#F6E6E2">퇴사${e.leaveDate?" "+esc(e.leaveDate):""}</span>`:`<span class="emp-status" style="color:#2A2A2A;background:#EDEDED">재직</span>`;
+  const srcBadge=e.source==="ats"?`<span class="ec-src" style="color:#5A3A2B;background:#EFE3D8">ATS 전환</span>`:`<span class="ec-src" style="color:#7A5541;background:#F1E5DB">직접 등록</span>`;
+  const st=e.status==="leave"?`<span class="emp-status" style="color:#5C3D30;background:#F0E1D7">퇴사${e.leaveDate?" "+esc(e.leaveDate):""}</span>`:`<span class="emp-status" style="color:#5A3A2B;background:#EFE3D8">재직</span>`;
   return `<div class="emp-card" onclick="openEmp(${e.id})">
     <div class="ec-top">
       ${empPhotoHTML(e.photoData,e.name,44)}
@@ -2838,8 +2995,8 @@ function empCardHTML(e){
     </div>
     <div class="ec-body">
       ${st}
-      ${e.joinDate?`<span class="emp-status" style="color:var(--muted);background:#F0F0F0">입사 ${esc(e.joinDate)}</span>`:""}
-      ${e.contract&&e.contract.wageAnnual?`<span class="emp-status" style="color:var(--muted);background:#F0F0F0">연봉 ${esc(fmtMoney(e.contract.wageAnnual))}</span>`:""}
+      ${e.joinDate?`<span class="emp-status" style="color:var(--muted);background:#F3EAE3">입사 ${esc(e.joinDate)}</span>`:""}
+      ${e.contract&&e.contract.wageAnnual?`<span class="emp-status" style="color:var(--muted);background:#F3EAE3">연봉 ${esc(fmtMoney(e.contract.wageAnnual))}</span>`:""}
     </div>
   </div>`;
 }
@@ -2877,11 +3034,11 @@ function renderContractList(){
     return `<div class="emp-card" onclick="openEmp(${e.id},'contract')">
       <div class="ec-top"><div class="emp-avatar">${esc(empInitial(e.name))}</div>
         <div style="flex:1;min-width:0"><div class="ec-name">${esc(e.name)}</div><div class="ec-meta">${esc(e.dept||"—")} · ${esc(e.position||"—")}</div></div>
-        ${done?`<span class="ec-src" style="color:#2A2A2A;background:#EDEDED">작성완료</span>`:`<span class="ec-src" style="color:#555555;background:#EEEEEE">미작성</span>`}
+        ${done?`<span class="ec-src" style="color:#5A3A2B;background:#EFE3D8">작성완료</span>`:`<span class="ec-src" style="color:#8A6650;background:#F0E6DD">미작성</span>`}
       </div>
       <div class="ec-body">
-        ${c.wageAnnual?`<span class="emp-status" style="color:var(--muted);background:#F0F0F0">연봉 ${esc(fmtMoney(c.wageAnnual))}</span>`:""}
-        ${c.periodType?`<span class="emp-status" style="color:var(--muted);background:#F0F0F0">${esc(c.periodType)}</span>`:""}
+        ${c.wageAnnual?`<span class="emp-status" style="color:var(--muted);background:#F3EAE3">연봉 ${esc(fmtMoney(c.wageAnnual))}</span>`:""}
+        ${c.periodType?`<span class="emp-status" style="color:var(--muted);background:#F3EAE3">${esc(c.periodType)}</span>`:""}
       </div></div>`;
   }).join("");
 }
@@ -2898,8 +3055,8 @@ function renderLaborList(){
         <div style="flex:1;min-width:0"><div class="ec-name">${esc(e.name)}</div><div class="ec-meta">${esc(e.dept||"—")} · ${esc(e.position||"—")}</div></div>
       </div>
       <div class="ec-body">
-        <span class="emp-status" style="color:var(--muted);background:#F0F0F0">전직발령 ${tc}건</span>
-        ${l.unionJoined?`<span class="emp-status" style="color:#444444;background:#EFEFEF">노조 ${esc(l.unionName||"가입")}</span>`:`<span class="emp-status" style="color:var(--muted);background:#F0F0F0">노조 미가입</span>`}
+        <span class="emp-status" style="color:var(--muted);background:#F3EAE3">전직발령 ${tc}건</span>
+        ${l.unionJoined?`<span class="emp-status" style="color:#7A5541;background:#F1E5DB">노조 ${esc(l.unionName||"가입")}</span>`:`<span class="emp-status" style="color:var(--muted);background:#F3EAE3">노조 미가입</span>`}
       </div></div>`;
   }).join("");
 }
@@ -2970,11 +3127,18 @@ const RC_TAX_FIELDS=[   // 세액·감면 정보
   ["sailorYn","선원여부"]
 ];
 const RC_EXT_SECTIONS=[["고용·신분 정보",RC_EMP_FIELDS],["급여이체 정보",RC_BANK_FIELDS],["급여·4대보험 정보",RC_PAY_FIELDS],["세액·감면 정보",RC_TAX_FIELDS]];
+const RC_MONEY_FIELDS=new Set(["avgMonthlyWage","npWage","npFee","hiWage","hiFee","eiWage","eiFee","studentLoanAmt"]);
+function rcFieldInput(e,on,k){
+  if(RC_MONEY_FIELDS.has(k)){
+    return `<input ${D(on)} value="${withComma(e[k])}" oninput="onMoneyInput(this,v=>empField('${k}',v))" inputmode="numeric" style="text-align:right">`;
+  }
+  return `<input ${D(on)} value="${val(e[k])}" onchange="empField('${k}',this.value)">`;
+}
 function rcFieldRow(e,on,spec){
-  return spec.map(([k,label])=>`<div class="fld"><label>${label}</label><input ${D(on)} value="${val(e[k])}" onchange="empField('${k}',this.value)"></div>`).join("");
+  return spec.map(([k,label])=>`<div class="fld"><label>${label}</label>${rcFieldInput(e,on,k)}</div>`).join("");
 }
 function rcExtSection(e,on,title,spec,badge){
-  const b=badge?` <span class="badge" style="background:#eef2ff;color:#4f46e5;border-color:#c7d2fe">${badge}</span>`:"";
+  const b=badge?` <span class="badge" style="background:#F3EAE3;color:#6B4A3A;border-color:#DCCABD">${badge}</span>`:"";
   return `<div class="rc-sec"><h3>${title}${b}</h3><div class="fg c3">${rcFieldRow(e,on,spec)}</div></div>`;
 }
 
@@ -3016,6 +3180,17 @@ function renderRecordCard(e){
     <input type="checkbox" ${docs[d.k]?"checked":""} ${D(on)} onchange="empDoc('${d.k}',this.checked)">
     <span class="dr-name">${d.n}</span>${docs[d.k]?'<span class="dr-note">확인</span>':''}
   </label>`).join("");
+
+  const canSensitive = canViewHrSensitive();
+  const sensitiveIntro = canSensitive
+    ? `<div style="margin:24px 0 8px;padding:10px 14px;border-left:4px solid #6B4A3A;background:#F3EAE3;border-radius:6px;font-size:13px;line-height:1.5">
+        📋 <b>이하 항목은 인사팀 작성란입니다.</b> 직원이 제출하는 인사기록카드에는 포함되지 않으며, 업로드 후 인사팀 권한 보유자만 확인·입력할 수 있습니다.
+      </div>
+      ${rcExtSection(e,on,"급여·4대보험 정보",RC_PAY_FIELDS,"인사팀 작성")}
+      ${rcExtSection(e,on,"세액·감면 정보",RC_TAX_FIELDS,"인사팀 작성")}`
+    : `<div style="margin:24px 0 8px;padding:10px 14px;border-left:4px solid #D7C2B4;background:#FCF7F3;border-radius:6px;font-size:12.5px;line-height:1.5;color:var(--muted)">
+        🔒 급여·4대보험 및 세액·감면 정보는 <b>권한이 있는 인사팀만</b> 볼 수 있습니다.
+      </div>`;
 
   return `
   ${on?`<div class="rc-import-bar">
@@ -3091,11 +3266,7 @@ function renderRecordCard(e){
     ${on?`<button class="rtable-add" onclick="empRowAdd('family')">+ 가족 추가</button>`:""}
   </div>
 
-  <div style="margin:24px 0 8px;padding:10px 14px;border-left:4px solid #4f46e5;background:rgba(79,70,229,.06);border-radius:6px;font-size:13px;line-height:1.5">
-    📋 <b>이하 항목은 인사팀 작성란입니다.</b> 직원이 제출하는 인사기록카드에는 포함되지 않으며, 업로드 후 인사팀이 직접 입력합니다.
-  </div>
-  ${rcExtSection(e,on,"급여·4대보험 정보",RC_PAY_FIELDS,"인사팀 작성")}
-  ${rcExtSection(e,on,"세액·감면 정보",RC_TAX_FIELDS,"인사팀 작성")}
+  ${sensitiveIntro}
 
   <div class="rc-sec"><h3>입사 구비서류</h3>
     ${docRows}
@@ -3236,16 +3407,16 @@ function renderContract(e){
     <label style="font-size:11px;font-weight:800;color:var(--faint);display:block;margin-bottom:6px">월 고정급여 산출내역 (항목 자유 추가·삭제 · 금액은 자동으로 콤마 표시)</label>
     <div class="rtable"><table><thead><tr><th>급여 항목</th><th style="text-align:right">금액(원)</th><th>산출 근거·비고</th>${on?"<th></th>":""}</tr></thead>
       <tbody>${wageRows||`<tr><td colspan="${on?4:3}" style="color:var(--faint);text-align:center;padding:12px">급여 항목이 없습니다</td></tr>`}
-      <tr style="background:#F0F0F0;font-weight:800">
+      <tr style="background:#F3EAE3;font-weight:800">
         <td>합계 (월 고정급여)</td>
         <td id="wageSumCell" style="text-align:right;font-size:13px;color:var(--primary)">${wageSum.toLocaleString("ko-KR")} 원</td>
-        <td id="wageSumNote" colspan="${on?2:1}">${diff?`<span style="font-weight:600;color:#555555;font-size:11px">⚠ 위 '월 급여'(${monthlyN.toLocaleString("ko-KR")}원)와 ${Math.abs(wageSum-monthlyN).toLocaleString("ko-KR")}원 차이</span>`:(monthlyN&&wageSum===monthlyN?`<span style="font-weight:600;color:#2A2A2A;font-size:11px">✓ 월 급여와 일치</span>`:`<span style="font-weight:400;color:var(--faint);font-size:11px">항목 금액의 합계</span>`)}</td>
+        <td id="wageSumNote" colspan="${on?2:1}">${diff?`<span style="font-weight:600;color:#8A6650;font-size:11px">⚠ 위 '월 급여'(${monthlyN.toLocaleString("ko-KR")}원)와 ${Math.abs(wageSum-monthlyN).toLocaleString("ko-KR")}원 차이</span>`:(monthlyN&&wageSum===monthlyN?`<span style="font-weight:600;color:#5A3A2B;font-size:11px">✓ 월 급여와 일치</span>`:`<span style="font-weight:400;color:var(--faint);font-size:11px">항목 금액의 합계</span>`)}</td>
       </tr>
       </tbody></table></div>
     ${on?`<button class="rtable-add" onclick="wageItemAdd()">+ 급여 항목 추가</button>`:""}
   </div>
 
-  <div class="rc-sec" style="background:var(--primary-soft);border-color:#DADADA">
+  <div class="rc-sec" style="background:var(--primary-soft);border-color:#DFCEC2">
     <h3 style="margin-bottom:10px">📄 근로계약서 생성</h3>
     <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:14px">
       위에 입력한 정보로 근로계약서를 생성합니다. 생성된 계약서는 화면에서 확인하고 <b>인쇄 · PDF 저장</b>할 수 있습니다.
@@ -3275,8 +3446,8 @@ function updateWageSum(){
   if(note){
     const diff = monthlyN && sum && sum!==monthlyN;
     note.innerHTML = diff
-      ? `<span style="font-weight:600;color:#555555;font-size:11px">⚠ 위 '월 급여'(${monthlyN.toLocaleString("ko-KR")}원)와 ${Math.abs(sum-monthlyN).toLocaleString("ko-KR")}원 차이</span>`
-      : (monthlyN&&sum===monthlyN?`<span style="font-weight:600;color:#2A2A2A;font-size:11px">✓ 월 급여와 일치</span>`:`<span style="font-weight:400;color:var(--faint);font-size:11px">항목 금액의 합계</span>`);
+      ? `<span style="font-weight:600;color:#8A6650;font-size:11px">⚠ 위 '월 급여'(${monthlyN.toLocaleString("ko-KR")}원)와 ${Math.abs(sum-monthlyN).toLocaleString("ko-KR")}원 차이</span>`
+      : (monthlyN&&sum===monthlyN?`<span style="font-weight:600;color:#5A3A2B;font-size:11px">✓ 월 급여와 일치</span>`:`<span style="font-weight:400;color:var(--faint);font-size:11px">항목 금액의 합계</span>`);
   }
 }
 
@@ -3350,16 +3521,16 @@ function buildContractHTML(e,c){
       <td colspan="4" style="padding:0">
         <table style="width:100%;border-collapse:collapse">
           <tr>
-            <th class="kd-wage" style="border:1px solid #333;padding:4px">근무일</th>
-            <th class="kd-wage" style="border:1px solid #333;padding:4px">시업시간</th>
-            <th class="kd-wage" style="border:1px solid #333;padding:4px">종업시간</th>
-            <th class="kd-wage" style="border:1px solid #333;padding:4px">휴게시간</th>
+            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">근무일</th>
+            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">시업시간</th>
+            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">종업시간</th>
+            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">휴게시간</th>
           </tr>
           <tr>
-            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.workDays||"주5일(월~금)")}</td>
-            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.workStart||"09:00")}</td>
-            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.workEnd||"18:00")}</td>
-            <td class="ctr" style="border:1px solid #333;padding:4px">${esc(c.breakTime||"12:30~13:30")}</td>
+            <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.workDays||"주5일(월~금)")}</td>
+            <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.workStart||"09:00")}</td>
+            <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.workEnd||"18:00")}</td>
+            <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.breakTime||"12:30~13:30")}</td>
           </tr>
         </table>
       </td>
@@ -3380,11 +3551,11 @@ function buildContractHTML(e,c){
       <td class="lbl">월 급 여</td><td class="ctr">${moneyN(c.wageMonthly)} 원</td>
       <td class="lbl">연 봉</td><td class="ctr">${moneyN(c.wageAnnual)} 원</td>
     </tr>
-    <tr><td colspan="4" class="ctr" style="background:#F0F0F0;font-weight:700">월 고정 급여 산출 내역</td></tr>
+    <tr><td colspan="4" class="ctr" style="background:#F3EAE3;font-weight:700">월 고정 급여 산출 내역</td></tr>
     ${wageRows||`<tr><td colspan="4" class="ctr" style="color:#888">산출내역 미입력</td></tr>`}
     ${(function(){
       const sum=(c.wageItems||[]).reduce((s,w)=>s+(parseInt(String(w.amount||"").replace(/[^\d]/g,""))||0),0);
-      return sum?`<tr style="background:#F3F3F3;font-weight:800"><td class="lbl2">합 계</td><td class="ctr" style="white-space:nowrap">${sum.toLocaleString("ko-KR")} 원</td><td colspan="2" class="kd-note">월 고정급여 합계</td></tr>`:"";
+      return sum?`<tr style="background:#F4ECE6;font-weight:800"><td class="lbl2">합 계</td><td class="ctr" style="white-space:nowrap">${sum.toLocaleString("ko-KR")} 원</td><td colspan="2" class="kd-note">월 고정급여 합계</td></tr>`:"";
     })()}
     <tr>
       <td class="lbl">임금 지급</td>
@@ -3518,14 +3689,14 @@ function recordFormHTML(){
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>인사기록카드</title>
   <style>
     @page{size:A4;margin:14mm}
-    *{box-sizing:border-box} body{font-family:"맑은 고딕","Malgun Gothic",sans-serif;color:#111;margin:0}
+    *{box-sizing:border-box} body{font-family:"맑은 고딕","Malgun Gothic",sans-serif;color:#3B2419;margin:0}
     h1{text-align:center;font-size:26px;letter-spacing:8px;margin:0 0 6px}
-    .desc{text-align:center;font-size:11px;color:#666;margin-bottom:16px}
+    .desc{text-align:center;font-size:11px;color:#826654;margin-bottom:16px}
     .sec{font-size:14px;font-weight:800;border-bottom:2px solid #222;padding-bottom:5px;margin:20px 0 8px}
     table{width:100%;border-collapse:collapse;font-size:12px}
     td,th{border:1px solid #999;padding:7px 8px}
-    th{background:#E8E8E8;font-weight:700;text-align:center}
-    .lbl{background:#E8E8E8;font-weight:700;width:110px;white-space:nowrap}
+    th{background:#E8D9CC;font-weight:700;text-align:center}
+    .lbl{background:#E8D9CC;font-weight:700;width:110px;white-space:nowrap}
     .photo{width:110px;text-align:center;color:#999;font-size:11px;vertical-align:middle}
     .sign{margin-top:24px;text-align:right;font-size:12px}
     @media print{.noprint{display:none}}
@@ -3565,7 +3736,7 @@ function recordFormHTML(){
   <div class="sec">가족사항</div>
   <table><tr><th>관계</th><th>성명</th><th>나이</th><th>생년월일</th></tr>${emptyRows([1,2,3,4],4)}</table>
 
-  <div style="margin:22px 0 8px;padding:9px 12px;border-left:4px solid #4f46e5;background:#eef2ff;font-size:12px;color:#333;border-radius:4px">📋 <b>이하 항목은 인사팀 작성란입니다.</b> 직원은 작성하지 않으셔도 됩니다. (인사팀이 시스템에 직접 입력)</div>
+  <div style="margin:22px 0 8px;padding:9px 12px;border-left:4px solid #6B4A3A;background:#eef2ff;font-size:12px;color:#6A4634;border-radius:4px">📋 <b>이하 항목은 인사팀 작성란입니다.</b> 직원은 작성하지 않으셔도 됩니다. (인사팀이 시스템에 직접 입력)</div>
   <div class="sec">급여·4대보험정보</div>${kv(RC_PAY_FIELDS)}
   <div class="sec">세액·감면정보</div>${kv(RC_TAX_FIELDS)}
 
@@ -3762,5 +3933,6 @@ if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloud
 init();
 
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79"}' crossorigin="anonymous"></script>
 </body>
 </html>
