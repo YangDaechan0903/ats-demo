@@ -3399,12 +3399,34 @@ function isJoinMonthNotFirstDay(joinDate, ym){
   return jm===ym && jd.getDate()!==1;
 }
 const LABEL_ALIAS={"식대(비과세)":"식대","고정야간근로수당":"야간근로수당","고정휴일근로수당":"휴일근로수당"}; // 근로계약 자동계산기 라벨 ↔ 급여관리 컬럼명
-function computePayrollRow(e, ym){
+/* 같은 귀속월에 이미 존재하는 '다른' 급여작업들에서 이 직원의 공제산정기준액(dedBase)을 합산.
+   여러 급여작업(정기+추가 등)이 같은 달에 있을 때, 건보ㆍ고용ㆍ소득세를 이중으로 걷지 않고
+   '증분'만 걷도록 계산 기준을 제공한다. */
+function otherRunsDedBaseForEmp(empId, ym, excludeRunId){
+  return PAYROLL_RUNS.filter(r=>r.yearMonth===ym && r.id!==excludeRunId)
+    .reduce((s,r)=>{
+      const row=r.rows.find(rr=>rr.empId===empId); if(!row) return s;
+      const fixed=PAY_COLUMNS.reduce((s2,k)=>s2+(PAY_TAXFREE.has(k)?taxfreeExcessPortion(k,row.pay[k].v):row.pay[k].v),0);
+      const extra=(row.payExtra||[]).reduce((s2,x)=>{
+        const amt=parseInt(digits(x.amount))||0, label=val(x.label);
+        return s2+(STATUTORY_TAXFREE_LIMITS[label]?taxfreeExcessPortion(label,amt):amt);
+      },0);
+      return s+fixed+extra;
+    },0);
+}
+function computePayrollRow(e, ym, opts){
+  opts=opts||{};
+  const includeNP = opts.includeNP!==false;   // 사용자가 이 작업에서 국민연금을 포함할지 직접 선택
+  const otherBase = opts.otherBase||0;        // 같은 달 다른 급여작업에 이미 반영된 공제기준액(증분 계산용)
+  // 국민연금을 포함하지 않는 작업(=추가·수정 급여 등, 이미 다른 작업에서 정기항목을 반영했다고 간주)은
+  // 근로계약의 정기 임금항목(기본급·식대 등)을 자동으로 채우지 않는다 — 이중 반영 방지.
+  // 사용자는 이런 작업에서 "+ 추가 항목"으로 필요한 것만 직접 넣는다.
+  const fillFromContract = includeNP;
   const c=migrateContract(e);
   const pr=prorateInfo(e.joinDate, e.leaveDate, ym);
   const pay={}; PAY_COLUMNS.forEach(k=>pay[k]=cell(0));
   let standardDedBase=0; // 일할계산 전, 근로계약상 '정상' 보수월액(비과세 한도 초과분 포함) — 국민연금 산정 전용
-  (c.wageItems||[]).forEach(w=>{
+  if(fillFromContract) (c.wageItems||[]).forEach(w=>{
     const raw0=val(w.label);
     const label=LABEL_ALIAS[raw0]||raw0;
     if(PAY_COLUMNS.includes(label)){
@@ -3417,19 +3439,30 @@ function computePayrollRow(e, ym){
   // 건강보험·고용보험·소득세: 그 달 실제(일할계산 포함) 지급액 기준. 비과세 항목은 한도까지만 제외하고 초과분은 과세대상 포함.
   const dedBase=PAY_COLUMNS.reduce((s,k)=>s+(PAY_TAXFREE.has(k)?taxfreeExcessPortion(k,pay[k].v):pay[k].v),0);
   const dep=parseInt(c.dedFamilyCount)||1;
-  const st=dedBase>0?calcStatutoryDeductions(dedBase,dep):{np:0,hi:0,ltc:0,ei:0,it:0,lt:0};
+  let hi,ei,ltc,it,lt;
+  if(otherBase>0){
+    // 같은 달 다른 급여작업에 이미 반영된 몫을 빼고 '증분'만 이 작업에서 공제(이중공제 방지)
+    const otherSt=calcStatutoryDeductions(otherBase,dep);
+    const combinedSt=calcStatutoryDeductions(otherBase+dedBase,dep);
+    hi=combinedSt.hi-otherSt.hi; ei=combinedSt.ei-otherSt.ei; ltc=combinedSt.ltc-otherSt.ltc;
+    it=combinedSt.it-otherSt.it; lt=combinedSt.lt-otherSt.lt;
+  } else {
+    const st=dedBase>0?calcStatutoryDeductions(dedBase,dep):{hi:0,ei:0,ltc:0,it:0,lt:0};
+    hi=st.hi; ei=st.ei; ltc=st.ltc; it=st.it; lt=st.lt;
+  }
   // 국민연금: 매달 고지금액이 동일해야 하므로 일할계산 전 '정상' 보수월액 기준으로 별도 계산.
   // 또한 국민연금은 매월 1일 입사가 아니면 그 달은 자격취득 대상이 아니라 부과되지 않음(익월부터 부과).
+  // 사용자가 이 급여작업을 '국민연금 포함' 작업으로 지정했을 때만 부과(같은 달 다른 작업에서 이미 걷었다면 여기선 0으로 둘 것).
   const npExempt=isJoinMonthNotFirstDay(e.joinDate, ym);
-  const npAmount = npExempt ? 0 : (standardDedBase>0 ? calcStatutoryDeductions(standardDedBase,dep).np : 0);
+  const npAmount = (includeNP && !npExempt) ? (standardDedBase>0 ? calcStatutoryDeductions(standardDedBase,dep).np : 0) : 0;
   const deduct={}; DEDUCT_COLUMNS.forEach(k=>deduct[k]=cell(0));
-  deduct["국민연금"]=cell(npAmount); deduct["건강보험"]=cell(st.hi); deduct["고용보험"]=cell(st.ei);
-  deduct["장기요양보험료"]=cell(st.ltc); deduct["소득세"]=cell(st.it); deduct["지방소득세"]=cell(st.lt);
+  deduct["국민연금"]=cell(npAmount); deduct["건강보험"]=cell(hi); deduct["고용보험"]=cell(ei);
+  deduct["장기요양보험료"]=cell(ltc); deduct["소득세"]=cell(it); deduct["지방소득세"]=cell(lt);
   const deductTotal=DEDUCT_COLUMNS.reduce((s,k)=>s+deduct[k].v,0);
   return {
     empId:e.id, name:e.name||"", dept:e.dept||"", position:e.position||"",
     joinDate:e.joinDate||"", leaveDate:e.leaveDate||"",
-    workDays:pr.workDays, monthDays:pr.monthDays, ratio:pr.ratio, prorated:pr.prorated, npExempt,
+    workDays:pr.workDays, monthDays:pr.monthDays, ratio:pr.ratio, prorated:pr.prorated, npExempt, includeNP,
     pay, deduct, payTotal, deductTotal, net:payTotal-deductTotal,
     payExtra:[]   // 근로계약에는 넣을 수 없는 변동급·일회성 항목(인센티브 등) — 이 달 급여에서만 자유롭게 추가
   };
@@ -3441,8 +3474,34 @@ function rowDeductTotal(row){ return DEDUCT_COLUMNS.reduce((s,k)=>s+(row.deduct[
 function createPayrollRun(){
   const ym=document.getElementById("prYm").value;
   if(!ym){ alert("귀속연월을 선택해주세요."); return; }
-  const existing=PAYROLL_RUNS.find(r=>r.yearMonth===ym);
-  if(existing){ if(!confirm(`${ym} 급여 작업이 이미 있습니다. 그 작업을 여시겠습니까? (새로 만들려면 취소 후 기존 작업을 삭제하세요)`)) return; openPayrollRun(existing.id); return; }
+  const existingRuns=PAYROLL_RUNS.filter(r=>r.yearMonth===ym);
+  openCreateRunModal(ym, existingRuns);
+}
+/* 급여 작업 생성 전, 사용자가 직접 '이번 작업 구분'과 '국민연금 포함 여부'를 정하게 하는 모달.
+   같은 귀속월에 이미 작업이 있어도 차단하지 않고, 정기/추가/수정 등 몇 개든 만들 수 있다 —
+   다만 국민연금은 사용자가 '포함' 체크한 작업에서만 부과된다(중복 방지는 전적으로 사용자 선택에 맡김). */
+function openCreateRunModal(ym, existingRuns){
+  document.getElementById("pdName").textContent=`${ym} 급여 작업 만들기`;
+  document.getElementById("pdMeta").textContent=existingRuns.length
+    ? `이 달에 이미 ${existingRuns.length}건의 작업이 있습니다: ${existingRuns.map(r=>`${esc(r.category||"급여")}(국민연금 ${r.includeNP===false?"미포함":"포함"})`).join(", ")}`
+    : "이 달 첫 급여 작업입니다.";
+  const defaultIncludeNP = existingRuns.every(r=>r.includeNP===false); // 이미 국민연금 포함 작업이 있으면 기본은 미포함으로
+  document.getElementById("pdBody").innerHTML=`
+    <div class="pd-row"><label>급여 구분</label><input type="text" id="newRunCategory" value="${existingRuns.length?"":"정기급여"}" placeholder="예: 정기급여, 인센티브 추가지급, 수정급여 등"></div>
+    <div class="pd-row"><label>국민연금 포함</label><input type="checkbox" id="newRunIncludeNP" style="justify-self:end" ${defaultIncludeNP?"checked":""}></div>
+    <div style="font-size:10.5px;color:var(--faint);line-height:1.6;margin:8px 0 14px">
+      💡 회사마다 정기급여·추가급여·수정급여 등 급여 처리 방식이 다르므로, 이 작업의 이름과 국민연금 포함 여부를 직접 정해주세요.<br>
+      · <b>국민연금 포함</b> 체크 시: 근로계약의 기본급·식대 등 정기 임금항목이 자동으로 채워지고, 국민연금도 정상 부과됩니다. (보통 "정기급여" 작업에 사용)<br>
+      · <b>국민연금 미포함</b> 선택 시: 정기 임금항목은 자동으로 채우지 않습니다(이미 다른 작업에서 반영했다고 보기 때문). "+ 추가 항목"으로 필요한 금액만 직접 넣으면, 그로 인해 늘어난 건강보험ㆍ고용보험ㆍ소득세ㆍ지방소득세 <b>증분만</b> 자동 계산됩니다. (보통 "추가급여/수정급여" 작업에 사용)
+    </div>
+    <button class="btn" style="width:100%;justify-content:center" onclick="confirmCreateRun('${ym}')">이 조건으로 급여 작업 만들기</button>
+  `;
+  document.getElementById("payrollDetailOverlay").classList.add("show");
+}
+function confirmCreateRun(ym){
+  const category=(document.getElementById("newRunCategory").value||"급여").trim();
+  const includeNP=document.getElementById("newRunIncludeNP").checked;
+  document.getElementById("payrollDetailOverlay").classList.remove("show");
   const monthDays=daysInMonth(ym);
   const [y,m]=ym.split("-").map(Number);
   const monthStart=new Date(y,m-1,1), monthEnd=new Date(y,m-1,monthDays);
@@ -3454,7 +3513,9 @@ function createPayrollRun(){
   });
   if(!targets.length){ alert("해당 월에 재직 중인 임직원이 없습니다."); return; }
   const run={ id:Date.now(), yearMonth:ym, payDate:`${ym}-${String(monthDays).padStart(2,"0")}`,
-    createdAt:new Date().toISOString(), rows: targets.map(e=>computePayrollRow(e,ym)) };
+    category, includeNP,
+    createdAt:new Date().toISOString(),
+    rows: targets.map(e=>computePayrollRow(e, ym, {includeNP, otherBase: otherRunsDedBaseForEmp(e.id, ym, null)})) };
   PAYROLL_RUNS.push(run); save();
   openPayrollRun(run.id);
 }
@@ -3477,7 +3538,7 @@ function renderPayrollList(){
   const wrap=document.getElementById("prRunList"); if(!wrap) return;
   const runs=[...PAYROLL_RUNS].sort((a,b)=>b.yearMonth.localeCompare(a.yearMonth));
   wrap.innerHTML = runs.length ? runs.map(r=>
-    `<div class="pr-run-chip" onclick="openPayrollRun(${r.id})">🗓 ${esc(r.yearMonth)} · ${r.rows.length}명
+    `<div class="pr-run-chip" onclick="openPayrollRun(${r.id})">🗓 ${esc(r.yearMonth)} · ${esc(r.category||"급여")}${r.includeNP===false?" (국민연금 미포함)":""} · ${r.rows.length}명
       <span class="pr-run-del" onclick="event.stopPropagation();deletePayrollRunById(${r.id})">✕</span></div>`
   ).join("") : `<div style="font-size:12.5px;color:var(--faint)">아직 만든 급여 작업이 없습니다.</div>`;
   document.getElementById("prListView").style.display="";
@@ -3508,13 +3569,14 @@ function deletePayrollRun(){ if(curPayrollRunId!=null) deletePayrollRunById(curP
 function recalcPayrollRun(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   if(!confirm("전체 재계산하면 수기로 수정한 값을 포함해 모든 셀이 인사기록카드·근로계약 기준으로 다시 계산됩니다. 계속하시겠습니까?")) return;
+  const includeNP=run.includeNP!==false;
   const targets=run.rows.map(r=>findEmp(r.empId)).filter(Boolean);
-  run.rows=targets.map(e=>computePayrollRow(e,run.yearMonth));
+  run.rows=targets.map(e=>computePayrollRow(e, run.yearMonth, {includeNP, otherBase: otherRunsDedBaseForEmp(e.id, run.yearMonth, run.id)}));
   save(); renderPayrollGrid();
 }
 function renderPayrollGrid(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
-  document.getElementById("prGridTitle").textContent=`${run.yearMonth} 급여 작업 (${run.rows.length}명)`;
+  document.getElementById("prGridTitle").textContent=`${run.yearMonth} ${run.category||"급여"} 작업 (${run.rows.length}명)${run.includeNP===false?" · 국민연금 미포함":""}`;
   const payDateInput=document.getElementById("prPayDateInput"); if(payDateInput) payDateInput.value=run.payDate||"";
   const th=`<tr><th rowspan="2" style="left:0;position:sticky;z-index:3">사원명</th><th rowspan="2">부서</th><th rowspan="2">직급</th>
     <th rowspan="2">입사일</th><th rowspan="2">퇴사일</th>
@@ -3730,7 +3792,17 @@ function recalcNonNpDeductions(row, empId){
   const dedBase=fixedBase+extraBase;
   const e=findEmp(empId);
   const dep=e ? (parseInt(migrateContract(e).dedFamilyCount)||1) : 1;
-  const st=dedBase>0 ? calcStatutoryDeductions(dedBase,dep) : {hi:0,ei:0,ltc:0,it:0,lt:0};
+  // 이 급여작업이 같은 달의 다른 작업과 함께 있는 경우, 그 작업들에 이미 반영된 몫을 빼고 증분만 반영(이중공제 방지)
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId);
+  const otherBase=run ? otherRunsDedBaseForEmp(empId, run.yearMonth, run.id) : 0;
+  let st;
+  if(otherBase>0){
+    const otherSt=calcStatutoryDeductions(otherBase,dep);
+    const combinedSt=calcStatutoryDeductions(otherBase+dedBase,dep);
+    st={ hi:combinedSt.hi-otherSt.hi, ei:combinedSt.ei-otherSt.ei, ltc:combinedSt.ltc-otherSt.ltc, it:combinedSt.it-otherSt.it, lt:combinedSt.lt-otherSt.lt };
+  } else {
+    st=dedBase>0 ? calcStatutoryDeductions(dedBase,dep) : {hi:0,ei:0,ltc:0,it:0,lt:0};
+  }
   row.deduct["건강보험"]={v:st.hi, manual:false};
   row.deduct["고용보험"]={v:st.ei, manual:false};
   row.deduct["장기요양보험료"]={v:st.ltc, manual:false};
