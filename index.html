@@ -794,12 +794,15 @@
   </div>
 
   <div class="gnb-item" data-axis="retain">
-    <button class="gnb-btn" onclick="toggleAxis('retain')">유지 <span style="font-size:9px">▾</span></button>
-    <div class="gnb-menu" data-axis="retain">
+    <button class="gnb-btn" onclick="goModule('employees')">유지</button>
+    <div class="gnb-menu" data-axis="retain" style="display:none">
       <div class="mlabel">유지</div>
       <button data-mod="employees" onclick="goModule('employees')">👥 임직원 · 인사기록카드</button>
-      <button data-mod="labor" onclick="goModule('labor')">⚖️ 노무관리</button>
     </div>
+  </div>
+
+  <div class="gnb-item" data-axis="company">
+    <button class="gnb-btn" onclick="goModule('company')">🏢 사업자정보</button>
   </div>
 
   <div class="gnb-right">
@@ -905,6 +908,19 @@
     <div class="mod-body"><div id="empGrid"></div></div>
   </div>
 
+  <!-- ═══════════ 유지 > 사업자정보 (회사등록) ═══════════ -->
+  <div id="hris-company" class="module">
+    <div class="mod-head">
+      <div class="mod-head-top">
+        <div><h1>사업자정보</h1><div class="sub">회사 기본정보를 관리합니다. 근로계약서·원천징수영수증 등 전체 문서에 자동으로 반영됩니다.</div></div>
+        <div class="spacer"></div>
+        <span class="edit-badge view" id="ciEditBadge">읽기 전용</span>
+        <button class="btn ghost" id="ciEditBtn" onclick="toggleCompanyEdit()">✎ 수정</button>
+      </div>
+    </div>
+    <div class="mod-body"><div id="ciBody" style="max-width:900px"></div></div>
+  </div>
+
   <!-- ═══════════ 확보 > 근로계약 (목록) ═══════════ -->
   <div id="hris-contract" class="module">
     <div class="mod-head">
@@ -919,19 +935,6 @@
       <div class="law-note">📖 <b>근로기준법 제17조</b> — 사용자는 근로계약 체결 시 ①임금 ②소정근로시간 ③휴일 ④연차유급휴가 및 근무장소·업무 등을 명시하고, 그 서면을 근로자에게 교부해야 합니다. 아래 항목은 이 명시사항을 따릅니다.</div>
       <div class="emp-grid" id="conGrid"></div>
     </div>
-  </div>
-
-  <!-- ═══════════ 유지 > 노무관리 (목록) ═══════════ -->
-  <div id="hris-labor" class="module">
-    <div class="mod-head">
-      <div class="mod-head-top">
-        <div><h1>노무관리</h1><div class="sub">전직발령 내역 · 노동조합 가입 현황을 관리합니다</div></div>
-        <div class="spacer"></div>
-        <div class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input id="labQ" placeholder="이름 검색" oninput="renderLaborList()"></div>
-      </div>
-    </div>
-    <div class="mod-body"><div class="emp-grid" id="labGrid"></div></div>
   </div>
 
   <!-- ═══════════ 추후개발 모듈 (개발·평가·보상) ═══════════ -->
@@ -978,7 +981,10 @@
           <div class="pr-toolbar">
             <button class="btn ghost" onclick="closePayrollRun()">← 목록으로</button>
             <span id="prGridTitle" style="font-weight:800;font-size:14px"></span>
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">지급일</label>
+            <input id="prPayDateInput" type="date" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="updateRunPayDate(this.value)">
             <span style="flex:1"></span>
+            <button class="btn ghost" onclick="openPayslipBatch()">📧 급여명세서 발송</button>
             <button class="btn ghost" onclick="applyLeaverSettlementBulk()">🧮 중도퇴사자 소득세 간편반영</button>
             <button class="btn ghost" onclick="openWageLedger()">🖨 임금대장</button>
             <button class="btn ghost" onclick="recalcPayrollRun()">🔁 전체 재계산</button>
@@ -1051,6 +1057,7 @@
       <button class="ed-tab on" data-panel="record" onclick="edTab('record')">인사기록카드</button>
       <button class="ed-tab" data-panel="contract" onclick="edTab('contract')">근로계약</button>
       <button class="ed-tab" data-panel="labor" onclick="edTab('labor')">노무</button>
+      <button class="ed-tab" data-panel="resume" onclick="edTab('resume')">이력서</button>
     </div>
     <div class="ed-body" id="edBody"></div>
   </div>
@@ -1076,6 +1083,17 @@
       <button class="btn ghost" onclick="closePayrollDetail()">닫기</button>
     </div>
     <div class="pd-scroll" id="pdBody"></div>
+  </div>
+</div>
+
+<!-- 급여 작업 선택(보고서 생성 전 귀속월/지급일 필터) -->
+<div class="payroll-detail-overlay" id="reportPickerOverlay">
+  <div class="pd-box" style="max-width:440px">
+    <div class="pd-head">
+      <div style="flex:1"><h3>급여 작업 선택</h3><div class="sub">보고서를 생성할 귀속월·지급일을 선택하세요</div></div>
+      <button class="btn ghost" onclick="closeReportPicker()">닫기</button>
+    </div>
+    <div class="pd-scroll" id="rpBody"></div>
   </div>
 </div>
 
@@ -1276,6 +1294,7 @@ const SUPABASE_KEY = "sb_publishable_mTPl3AV_37DJbclJkBMx6w_81Q_pXtz";
 const STORE = "ats_jobs_v1";          // 로컬 캐시(파일 포함 전체 보관)
 const EMP_STORE = "hris_employees_v1"; // 임직원 로컬 캐시
 const PAY_STORE = "hris_payroll_v1";   // 급여관리(보상) 로컬 캐시
+const COMPANY_STORE = "hris_company_v1"; // 사업자정보 로컬 캐시
 const TOKEN_STORE = "ats_session_v1"; // 로그인 세션 보관
 let cloudOK = false;
 let session = null;                   // {access_token, refresh_token, expires_at, email}
@@ -1389,7 +1408,7 @@ function lightEmployees(){
 }
 async function cloudPush(){
   try{
-    const payload = { jobs: lightCopy(), employees: lightEmployees(), users: USERS, payrollRuns: PAYROLL_RUNS };
+    const payload = { jobs: lightCopy(), employees: lightEmployees(), users: USERS, payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO };
     const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=id`, {
       method:"POST",
       headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
@@ -1401,8 +1420,8 @@ async function cloudPush(){
 }
 // app_state.data는 두 형식 가능: (구형) JOBS 배열 그대로 / (신형) {jobs, employees, users}
 function unpackData(d){
-  if(Array.isArray(d)) return { jobs:d, employees:[], users:[], payrollRuns:[] };       // 구형 → 자동 마이그레이션
-  if(d && typeof d==="object") return { jobs:Array.isArray(d.jobs)?d.jobs:[], employees:Array.isArray(d.employees)?d.employees:[], users:Array.isArray(d.users)?d.users:[], payrollRuns:Array.isArray(d.payrollRuns)?d.payrollRuns:[] };
+  if(Array.isArray(d)) return { jobs:d, employees:[], users:[], payrollRuns:[], companyInfo:{} };       // 구형 → 자동 마이그레이션
+  if(d && typeof d==="object") return { jobs:Array.isArray(d.jobs)?d.jobs:[], employees:Array.isArray(d.employees)?d.employees:[], users:Array.isArray(d.users)?d.users:[], payrollRuns:Array.isArray(d.payrollRuns)?d.payrollRuns:[], companyInfo:(d.companyInfo&&typeof d.companyInfo==="object")?d.companyInfo:{} };
   return null;
 }
 async function load(){
@@ -1414,10 +1433,11 @@ async function load(){
   }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
 
   // 로컬 캐시 (STORE=jobs, EMP_STORE=employees)
-  let localJobs=null, localEmps=null, localPay=null;
+  let localJobs=null, localEmps=null, localPay=null, localCompany=null;
   try{ const r=localStorage.getItem(STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localJobs=a; } }catch(e){}
   try{ const r=localStorage.getItem(EMP_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localEmps=a; } }catch(e){}
   try{ const r=localStorage.getItem(PAY_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localPay=a; } }catch(e){}
+  try{ const r=localStorage.getItem(COMPANY_STORE); if(r){ const a=JSON.parse(r); if(a&&typeof a==="object") localCompany=a; } }catch(e){}
 
   if(cloud && (cloud.jobs.length || cloud.employees.length || cloud.users.length)){
     // 첨부파일은 기기 로컬에만 있으므로 클라우드 데이터에 다시 붙여줌
@@ -1431,11 +1451,12 @@ async function load(){
     EMPLOYEES=cloud.employees||[];
     USERS=cloud.users||[];
     PAYROLL_RUNS=cloud.payrollRuns||localPay||[];
+    COMPANY_INFO={...blankCompanyInfo(), ...(cloud.companyInfo&&Object.keys(cloud.companyInfo).length?cloud.companyInfo:(localCompany||{}))};
     persistLocal();
   } else if(localJobs && localJobs.length){
-    JOBS=localJobs; EMPLOYEES=localEmps||[]; USERS=USERS||[]; PAYROLL_RUNS=localPay||[]; cloudPush();
+    JOBS=localJobs; EMPLOYEES=localEmps||[]; USERS=USERS||[]; PAYROLL_RUNS=localPay||[]; COMPANY_INFO={...blankCompanyInfo(), ...(localCompany||{})}; cloudPush();
   } else {
-    JOBS=seed(); EMPLOYEES=[]; USERS=USERS||[]; PAYROLL_RUNS=[]; cloudPush();
+    JOBS=seed(); EMPLOYEES=[]; USERS=USERS||[]; PAYROLL_RUNS=[]; COMPANY_INFO=blankCompanyInfo(); cloudPush();
   }
 }
 // 로그인 전, 승인 여부 확인을 위해 users만 읽기
@@ -1450,11 +1471,19 @@ function persistLocal(){
   try{ localStorage.setItem(STORE, JSON.stringify(JOBS)); }catch(e){}
   try{ localStorage.setItem(EMP_STORE, JSON.stringify(EMPLOYEES)); }catch(e){}
   try{ localStorage.setItem(PAY_STORE, JSON.stringify(PAYROLL_RUNS)); }catch(e){}
+  try{ localStorage.setItem(COMPANY_STORE, JSON.stringify(COMPANY_INFO)); }catch(e){}
 }
 
 let JOBS=[];
 let EMPLOYEES=[];        // e-HRIS 임직원 명부
 let PAYROLL_RUNS=[];     // 보상 > 급여관리: 월별 급여 작업 목록
+let COMPANY_INFO={};     // 유지 > 사업자정보: 회사 기본정보(근로계약·원천징수영수증 등 전체 문서에 반영)
+function blankCompanyInfo(){
+  return { name:"", bizRegNo:"", corpRegNo:"", ceoName:"", bizType:"법인",
+    zip:"", addr:"", addrDetail:"", phone:"",
+    industryCode:"", bizCategory:"", bizItem:"",
+    estDate:"", openDate:"", taxOffice:"" };
+}
 let USERS=[];            // 회원(가입 신청·승인·권한) 목록
 const ADMIN_EMAIL="ydc0126@naver.com";   // 고정 관리자
 let curUser=null;        // 현재 로그인한 사용자의 USERS 레코드
@@ -2799,8 +2828,8 @@ document.addEventListener('keydown',e=>{if(e.key==="Escape"){closeItv();closeDet
    e-HRIS 확장 — 모듈 전환 · 임직원 · 인사기록카드 · 근로계약 · 노무
    (기존 ATS 코드는 위에 그대로. 아래는 전부 추가분)
    ═══════════════════════════════════════════════════════════ */
-const MODULES=["home","ats","contract","develop","evaluate","reward","employees","labor","admin"];
-const AXIS_OF={ats:"acquire",contract:"acquire",develop:"develop",evaluate:"evaluate",reward:"reward",employees:"retain",labor:"retain",admin:"admin"};
+const MODULES=["home","ats","contract","develop","evaluate","reward","employees","company","admin"];
+const AXIS_OF={ats:"acquire",contract:"acquire",develop:"develop",evaluate:"evaluate",reward:"reward",employees:"retain",labor:"retain",company:"company",admin:"admin"};
 
 function closeAllGnbMenus(){
   document.querySelectorAll(".gnb-menu.open").forEach(m=>m.classList.remove("open"));
@@ -2838,8 +2867,8 @@ function goModule(mod){
   if(!MODULES.includes(mod)) mod="ats";
   // 권한 체크: admin은 관리자만, 나머지는 hasPerm
   if(mod==="admin" && !isAdmin()){ mod="ats"; }
-  if(["ats","contract","employees","labor"].includes(mod) && !hasPerm(mod)){
-    const fb=["ats","contract","employees","labor"].find(m=>hasPerm(m));
+  if(["ats","contract","employees"].includes(mod) && !hasPerm(mod)){
+    const fb=["ats","contract","employees"].find(m=>hasPerm(m));
     mod = fb || "develop";   // 접근 가능한 게 없으면 안내 탭
   }
   curModule=mod;
@@ -2857,8 +2886,8 @@ function goModule(mod){
   if(mod==="home") renderHome();
   else if(mod==="employees") renderEmployees();
   else if(mod==="contract") renderContractList();
-  else if(mod==="labor") renderLaborList();
   else if(mod==="reward") renderPayrollList();
+  else if(mod==="company") renderCompanyInfo();
   else if(mod==="admin") renderAdmin();
 }
 
@@ -2891,7 +2920,7 @@ function renderHome(){
       mod:"reward" },
     { axis:"retain", ico:"🤝", title:"유지", stat:`재직 임직원 ${activeEmpCount}명`,
       desc:"임직원 인사기록카드와 노무 이슈를 관리합니다.",
-      links: link("employees","👥","임직원 · 인사기록카드")+link("labor","⚖️","노무관리"), mod:"employees" },
+      links: link("employees","👥","임직원 · 인사기록카드"), mod:"employees" },
   ];
 
   const html=cards.map(c=>{
@@ -2910,6 +2939,66 @@ function renderHome(){
 
 
 /* ═══════ 관리자: 사용자 관리 ═══════ */
+/* ═══════════════════════ 유지 > 사업자정보(회사등록) ═══════════════════════
+   여기 입력된 값은 근로계약서·원천징수영수증·원천징수이행상황신고서·임금대장 등
+   회사명이 필요한 모든 문서에 자동으로 반영된다(companyNameGuess/companyInfoFull 참고). */
+let companyEdit=false;
+function toggleCompanyEdit(){
+  if(!isAdmin()){ alert("사업자정보 수정은 관리자만 가능합니다."); return; }
+  companyEdit=!companyEdit; renderCompanyInfo();
+}
+function companyFieldEdit(key,value){
+  COMPANY_INFO[key]=value; save();
+}
+function renderCompanyInfo(){
+  const body=document.getElementById("ciBody"); if(!body) return;
+  const on=companyEdit && isAdmin();
+  document.getElementById("ciEditBadge").className="edit-badge "+(on?"edit":"view");
+  document.getElementById("ciEditBadge").textContent=on?"수정 중":"읽기 전용";
+  document.getElementById("ciEditBtn").style.display=isAdmin()?"":"none";
+  document.getElementById("ciEditBtn").textContent=on?"완료":"✎ 수정";
+  const c=COMPANY_INFO=COMPANY_INFO||blankCompanyInfo();
+  const f=(key,label,ph,extra)=>`<div class="fld"${extra||""}><label>${label}</label><input ${D(on)} value="${val(c[key])}" onchange="companyFieldEdit('${key}',this.value)" placeholder="${ph||""}"></div>`;
+  body.innerHTML=`
+    <div class="rc-sec"><h3>기본정보</h3>
+      <div class="fg c3">
+        ${f("name","회사명(상호)","예: (주)에프엔더블유")}
+        ${f("ceoName","대표자","예: 정수연")}
+        <div class="fld"><label>법인/개인구분</label>${on?`<select onchange="companyFieldEdit('bizType',this.value)"><option ${c.bizType!=="개인"?"selected":""}>법인</option><option ${c.bizType==="개인"?"selected":""}>개인</option></select>`:`<div class="ro">${esc(c.bizType||"법인")}</div>`}</div>
+        ${f("bizRegNo","사업자등록번호","예: 520-81-02364")}
+        ${f("corpRegNo","법인등록번호","예: 110111-8322424")}
+        ${f("phone","사업장 전화번호","예: 02-1234-5678")}
+      </div>
+      <div class="fg">
+        ${f("addr","사업장주소","예: 서울 강남구 학동로 208",` class="full"`)}
+      </div>
+      <div class="fg c3">
+        ${f("addrDetail","상세주소","예: 4층")}
+        ${f("industryCode","업종코드","예: 743002")}
+        ${f("taxOffice","관할세무서","예: 강남세무서")}
+      </div>
+    </div>
+    <div class="rc-sec"><h3>업태ㆍ설립정보</h3>
+      <div class="fg c3">
+        ${f("bizCategory","업태","예: 전문, 과학 및 기술 서비스업")}
+        ${f("bizItem","종목","예: 광고 대행업")}
+      </div>
+      <div class="fg c3">
+        <div class="fld"><label>설립년월일</label><input ${D(on)} type="date" value="${val(c.estDate)}" onchange="companyFieldEdit('estDate',this.value)"></div>
+        <div class="fld"><label>개업년월일</label><input ${D(on)} type="date" value="${val(c.openDate)}" onchange="companyFieldEdit('openDate',this.value)"></div>
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:var(--faint);line-height:1.6;padding:4px 2px">
+      💡 이 정보는 근로계약서의 "사용자(갑)" 란, 근로소득원천징수영수증의 "징수의무자" 란, 원천징수이행상황신고서·임금대장의 회사명 표시에 자동으로 반영됩니다.
+      ${(!c.name)?`<br>⚠ 아직 회사명이 입력되지 않았습니다. 관리자가 먼저 입력해주세요.`:""}
+    </div>
+  `;
+}
+/* 다른 문서에서 회사 전체 정보가 필요할 때 사용 (원천징수영수증 징수의무자란 등) */
+function companyInfoFull(){
+  return COMPANY_INFO && COMPANY_INFO.name ? COMPANY_INFO : blankCompanyInfo();
+}
+
 function renderAdmin(){
   if(!isAdmin()){ document.getElementById("adminBody").innerHTML="<div class='emp-empty'>관리자만 접근할 수 있습니다.</div>"; return; }
   const pending=USERS.filter(u=>u.status==="pending");
@@ -3104,6 +3193,9 @@ function buildRecruitSnapshot(c, j){
     extraQA: Array.isArray(c.extraQA) ? JSON.parse(JSON.stringify(c.extraQA)) : [],
     transcript: c.itvTranscript || "",
     tags: Array.isArray(c.tags) ? c.tags.slice() : [],
+    fileName: c.fileName||"", fileData: c.fileData||"",   // 입사 당시 제출한 원본 이력서
+    hl: Array.isArray(c.hl) ? c.hl.slice() : [],           // AI 이력서 분석 하이라이트
+    memo: c.memo||"",
     snapshotAt: new Date().toISOString()
   };
 }
@@ -3250,26 +3342,7 @@ function renderContractList(){
       </div></div>`;
   }).join("");
 }
-function renderLaborList(){
-  const grid=document.getElementById("labGrid"); if(!grid) return;
-  const q=(document.getElementById("labQ").value||"").trim().toLowerCase();
-  const list=EMPLOYEES.filter(e=>!q||(e.name+" "+e.dept).toLowerCase().includes(q));
-  if(!list.length){ grid.innerHTML=`<div class="emp-empty" style="grid-column:1/-1">임직원을 먼저 등록하면 노무 정보를 관리할 수 있습니다.</div>`; return; }
-  grid.innerHTML=list.map(e=>{
-    const l=e.labor||{};
-    const tc=(l.transfers||[]).length;
-    const cc=(l.contracts||[]).length;
-    return `<div class="emp-card" onclick="openEmp(${e.id},'labor')">
-      <div class="ec-top"><div class="emp-avatar">${esc(empInitial(e.name))}</div>
-        <div style="flex:1;min-width:0"><div class="ec-name">${esc(e.name)}</div><div class="ec-meta">${esc(e.dept||"—")} · ${esc(e.position||"—")}</div></div>
-      </div>
-      <div class="ec-body">
-        <span class="emp-status" style="color:${cc?"#5A3A2B":"var(--muted)"};background:${cc?"#F1E5DB":"#F3EAE3"}">계약체결 ${cc}건</span>
-        <span class="emp-status" style="color:var(--muted);background:#F3EAE3">전직발령 ${tc}건</span>
-        ${l.unionJoined?`<span class="emp-status" style="color:#7A5541;background:#F1E5DB">노조 ${esc(l.unionName||"가입")}</span>`:`<span class="emp-status" style="color:var(--muted);background:#F3EAE3">노조 미가입</span>`}
-      </div></div>`;
-  }).join("");
-}
+
 
 /* ═══════════════════════ 보상 > 급여관리 ═══════════════════════
    WEHAG '급여자료입력' 화면 구조를 참고: 사원별로 급여항목(수당)/공제항목을 관리.
@@ -3357,10 +3430,12 @@ function computePayrollRow(e, ym){
     empId:e.id, name:e.name||"", dept:e.dept||"", position:e.position||"",
     joinDate:e.joinDate||"", leaveDate:e.leaveDate||"",
     workDays:pr.workDays, monthDays:pr.monthDays, ratio:pr.ratio, prorated:pr.prorated, npExempt,
-    pay, deduct, payTotal, deductTotal, net:payTotal-deductTotal
+    pay, deduct, payTotal, deductTotal, net:payTotal-deductTotal,
+    payExtra:[]   // 근로계약에는 넣을 수 없는 변동급·일회성 항목(인센티브 등) — 이 달 급여에서만 자유롭게 추가
   };
 }
-function rowPayTotal(row){ return PAY_COLUMNS.reduce((s,k)=>s+(row.pay[k]?row.pay[k].v:0),0); }
+function rowExtraTotal(row){ return (row.payExtra||[]).reduce((s,x)=>s+(parseInt(digits(x.amount))||0),0); }
+function rowPayTotal(row){ return PAY_COLUMNS.reduce((s,k)=>s+(row.pay[k]?row.pay[k].v:0),0) + rowExtraTotal(row); }
 function rowDeductTotal(row){ return DEDUCT_COLUMNS.reduce((s,k)=>s+(row.deduct[k]?row.deduct[k].v:0),0); }
 
 function createPayrollRun(){
@@ -3440,6 +3515,7 @@ function recalcPayrollRun(){
 function renderPayrollGrid(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   document.getElementById("prGridTitle").textContent=`${run.yearMonth} 급여 작업 (${run.rows.length}명)`;
+  const payDateInput=document.getElementById("prPayDateInput"); if(payDateInput) payDateInput.value=run.payDate||"";
   const th=`<tr><th rowspan="2" style="left:0;position:sticky;z-index:3">사원명</th><th rowspan="2">부서</th><th rowspan="2">직급</th>
     <th rowspan="2">입사일</th><th rowspan="2">퇴사일</th>
     <th colspan="${PAY_COLUMNS.length+1}">급여항목</th><th colspan="${DEDUCT_COLUMNS.length+1}">공제항목</th><th rowspan="2">차인지급액</th></tr>
@@ -3447,7 +3523,7 @@ function renderPayrollGrid(){
   const body=run.rows.map((row,i)=>{
     const pt=rowPayTotal(row), dt=rowDeductTotal(row), net=pt-dt;
     return `<tr>
-      <td class="pr-name" onclick="openPayrollDetail(${i})">${esc(row.name)}${row.prorated?`<span class="pr-prorate">일할 ${row.workDays}/${row.monthDays}일</span>`:""}</td>
+      <td class="pr-name" onclick="openPayrollDetail(${i})">${esc(row.name)}${row.prorated?`<span class="pr-prorate">일할 ${row.workDays}/${row.monthDays}일</span>`:""}${(row.payExtra&&row.payExtra.length)?`<span class="pr-prorate" style="color:#7A5541">➕추가항목 ${row.payExtra.length}건</span>`:""}</td>
       <td class="pr-meta">${esc(row.dept||"—")}</td><td class="pr-meta">${esc(row.position||"—")}</td>
       <td class="pr-meta">${esc(row.joinDate||"—")}</td><td class="pr-meta">${esc(row.leaveDate||"—")}</td>
       ${PAY_COLUMNS.map(k=>`<td>${row.pay[k].v?row.pay[k].v.toLocaleString("ko-KR"):"-"}${row.pay[k].manual?" ✎":""}</td>`).join("")}
@@ -3460,19 +3536,144 @@ function renderPayrollGrid(){
   document.getElementById("prTable").innerHTML=`<thead>${th}</thead><tbody>${body}</tbody>`;
 }
 
-/* ── 급여 상세 (사원명 클릭) ── */
+/* 급여작업 전체(정기) 지급일 수정. 이미 지급일을 명시적으로 지정하지 않은(=run.payDate와 같은) 추가 급여 항목들은
+   자동으로 새 지급일에 맞춰 따라간다(정기 지급일 기본값을 유지하는 개념). */
+function updateRunPayDate(newDate){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run||!newDate) return;
+  const oldDate=run.payDate;
+  run.rows.forEach(row=>{
+    (row.payExtra||[]).forEach(x=>{ if(!x.payDate || x.payDate===oldDate) x.payDate=newDate; });
+  });
+  run.payDate=newDate;
+  save(); renderPayrollGrid();
+}
+
+/* ── 지급일별 급여명세서 발송 ──
+   이 급여작업 안에 존재하는 지급일들(정기 지급일 + 추가항목별 다른 지급일)을 모아 보여주고,
+   선택한 날짜에 해당하는 사람들의 급여명세서를 한번에 인쇄창으로 생성한다. */
+function openPayslipBatch(){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  const dateSet=new Map(); // date -> {isRegular, empIds:Set}
+  dateSet.set(run.payDate, {isRegular:true, count:run.rows.length});
+  run.rows.forEach(row=>{
+    (row.payExtra||[]).forEach(x=>{
+      const d=x.payDate||run.payDate;
+      if(d===run.payDate) return;
+      if(!dateSet.has(d)) dateSet.set(d, {isRegular:false, count:0, empIds:new Set()});
+      const info=dateSet.get(d);
+      if(!info.empIds) info.empIds=new Set();
+      info.empIds.add(row.empId);
+    });
+  });
+  const dates=[...dateSet.keys()].sort();
+  reportPickerCallback=null;
+  document.getElementById("rpBody").innerHTML = dates.map(d=>{
+    const info=dateSet.get(d);
+    const cnt=info.isRegular?info.count:info.empIds.size;
+    return `<div class="pr-run-chip" style="width:100%;margin-bottom:8px;justify-content:space-between;box-sizing:border-box" onclick="generatePayslipsForDate('${d}')">
+      <span>🗓 ${esc(d)} ${info.isRegular?"· 정기 급여명세서":"· 추가지급 명세서"}</span><span>${cnt}명</span>
+    </div>`;
+  }).join("");
+  document.getElementById("reportPickerOverlay").classList.add("show");
+}
+function generatePayslipsForDate(payDate){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  closeReportPicker();
+  const isRegular=payDate===run.payDate;
+  const ci=companyInfoFull();
+  const slips=[];
+  run.rows.forEach(row=>{
+    // 국민연금은 항상 정기 지급일에만 표시(인센티브와 무관하게 고정금액이므로 배분 대상 아님)
+    const base=computeBaseDeductions(row, row.empId); // 정기항목만 기준 공제(=정기 지급일에서 뗄 몫)
+    const totalDed={hi:row.deduct["건강보험"].v, ei:row.deduct["고용보험"].v, ltc:row.deduct["장기요양보험료"].v, it:row.deduct["소득세"].v, lt:row.deduct["지방소득세"].v};
+    const incr={ hi:totalDed.hi-base.hi, ei:totalDed.ei-base.ei, ltc:totalDed.ltc-base.ltc, it:totalDed.it-base.it, lt:totalDed.lt-base.lt }; // 추가항목 때문에 늘어난 증분(=추가 지급일들에 배분할 몫)
+    // 정기 지급일과 다르게 지정된 추가항목들을 지급일별로 그룹핑, 그 합계 비율로 증분 공제를 배분
+    const extraByDate={};
+    (row.payExtra||[]).forEach(x=>{
+      const d=x.payDate||run.payDate;
+      if(d===run.payDate) return; // 정기일과 같은 날짜면 배분 대상 아님(정기 명세서에 그대로 포함)
+      extraByDate[d]=(extraByDate[d]||0)+(parseInt(digits(x.amount))||0);
+    });
+    const extraTotalAll=Object.values(extraByDate).reduce((s,v)=>s+v,0);
+
+    if(isRegular){
+      const extraOnThisDate=(row.payExtra||[]).filter(x=>(x.payDate||run.payDate)===payDate);
+      const payRows=PAY_COLUMNS.filter(k=>row.pay[k].v).map(k=>`<tr><td class="lbl">${k}</td><td>${row.pay[k].v.toLocaleString("ko-KR")}</td></tr>`).join("");
+      const extraRows=extraOnThisDate.map(x=>`<tr><td class="lbl">${esc(x.label||"추가항목")}</td><td>${(parseInt(digits(x.amount))||0).toLocaleString("ko-KR")}</td></tr>`).join("");
+      // 정기 명세서 공제 = 국민연금(항상 정기분) + 정기항목 기준 기본공제(건보ㆍ고용ㆍ소득세 등) + 이 날짜와 같은 추가항목의 증분 몫
+      const thisDateExtra=extraOnThisDate.reduce((s,x)=>s+(parseInt(digits(x.amount))||0),0);
+      const shareRatio = extraTotalAll>0 ? thisDateExtra/(extraTotalAll+thisDateExtra) : 0; // 참고용, 정기일 자체분은 base로 이미 포함
+      const dedRowsData=[
+        ["국민연금", row.deduct["국민연금"].v],
+        ["건강보험", base.hi], ["고용보험", base.ei], ["장기요양보험료", base.ltc],
+        ["소득세", base.it], ["지방소득세", base.lt],
+        ...DEDUCT_COLUMNS.filter(k=>!["국민연금","건강보험","고용보험","장기요양보험료","소득세","지방소득세"].includes(k)).map(k=>[k,row.deduct[k].v])
+      ].filter(([,v])=>v);
+      const dedRows=dedRowsData.map(([k,v])=>`<tr><td class="lbl">${k}</td><td>${v.toLocaleString("ko-KR")}</td></tr>`).join("");
+      const payTotal=PAY_COLUMNS.reduce((s,k)=>s+row.pay[k].v,0)+thisDateExtra;
+      const dedTotal=dedRowsData.reduce((s,[,v])=>s+v,0);
+      slips.push(`<div style="border:2px solid #333;padding:16px;page-break-after:always;font-size:11px">
+        <h2 style="text-align:center;margin-bottom:2px">급여명세서</h2>
+        <div style="text-align:center;color:#666;margin-bottom:12px">${esc(ci.name||"—")} · ${esc(run.yearMonth)} 귀속 · 지급일 ${esc(payDate)}</div>
+        <table style="margin-bottom:10px"><tr><td class="lbl" style="width:90px">성명</td><td>${esc(row.name)}</td><td class="lbl" style="width:90px">부서/직급</td><td>${esc(row.dept||"—")} / ${esc(row.position||"—")}</td></tr></table>
+        <table><thead><tr><th style="width:50%">급여항목</th><th>공제항목</th></tr></thead>
+        <tr><td style="vertical-align:top;padding:0"><table>${payRows}${extraRows}<tr style="background:#F3EAE3;font-weight:800"><td class="lbl">지급액계</td><td>${payTotal.toLocaleString("ko-KR")}</td></tr></table></td>
+        <td style="vertical-align:top;padding:0"><table>${dedRows}<tr style="background:#F3EAE3;font-weight:800"><td class="lbl">공제액계</td><td>${dedTotal.toLocaleString("ko-KR")}</td></tr></table></td></tr></table>
+        <table style="margin-top:8px"><tr style="background:#F0E6DD;font-weight:800;font-size:13px"><td class="lbl">차인지급액</td><td>${(payTotal-dedTotal).toLocaleString("ko-KR")} 원</td></tr></table>
+        ${extraTotalAll>0?`<div style="font-size:9.5px;color:#888;margin-top:6px">※ 이 달 중 다른 날짜(${Object.keys(extraByDate).join(", ")})에 지급되는 추가항목에 대한 건강보험ㆍ고용보험ㆍ소득세 등은 해당 지급일 명세서에서 별도로 공제됩니다.</div>`:""}
+      </div>`);
+    } else {
+      const items=(row.payExtra||[]).filter(x=>(x.payDate||run.payDate)===payDate);
+      if(!items.length) return;
+      const thisDateTotal=items.reduce((s,x)=>s+(parseInt(digits(x.amount))||0),0);
+      const ratio=extraTotalAll>0 ? thisDateTotal/extraTotalAll : 0; // 이 날짜 몫이 전체 추가항목 중 차지하는 비중
+      const dedShare={ hi:Math.round(incr.hi*ratio), ei:Math.round(incr.ei*ratio), ltc:Math.round(incr.ltc*ratio), it:Math.round(incr.it*ratio), lt:Math.round(incr.lt*ratio) };
+      const payRows=items.map(x=>`<tr><td class="lbl">${esc(x.label||"추가항목")}</td><td>${(parseInt(digits(x.amount))||0).toLocaleString("ko-KR")}</td></tr>`).join("");
+      const dedRowsData=[["건강보험",dedShare.hi],["고용보험",dedShare.ei],["장기요양보험료",dedShare.ltc],["소득세",dedShare.it],["지방소득세",dedShare.lt]].filter(([,v])=>v);
+      const dedRows=dedRowsData.map(([k,v])=>`<tr><td class="lbl">${k}</td><td>${v.toLocaleString("ko-KR")}</td></tr>`).join("");
+      const dedTotal=dedRowsData.reduce((s,[,v])=>s+v,0);
+      slips.push(`<div style="border:2px solid #333;padding:16px;page-break-after:always;font-size:11px">
+        <h2 style="text-align:center;margin-bottom:2px">추가지급 명세서</h2>
+        <div style="text-align:center;color:#666;margin-bottom:12px">${esc(ci.name||"—")} · ${esc(run.yearMonth)} 귀속 · 지급일 ${esc(payDate)}</div>
+        <table style="margin-bottom:10px"><tr><td class="lbl" style="width:90px">성명</td><td>${esc(row.name)}</td></tr></table>
+        <table><thead><tr><th style="width:50%">지급항목</th><th>공제항목</th></tr></thead>
+        <tr><td style="vertical-align:top;padding:0"><table>${payRows}<tr style="background:#F3EAE3;font-weight:800"><td class="lbl">지급액계</td><td>${thisDateTotal.toLocaleString("ko-KR")}</td></tr></table></td>
+        <td style="vertical-align:top;padding:0"><table>${dedRows||`<tr><td class="lbl" colspan="2" style="color:#888">해당 없음</td></tr>`}<tr style="background:#F3EAE3;font-weight:800"><td class="lbl">공제액계</td><td>${dedTotal.toLocaleString("ko-KR")}</td></tr></table></td></tr></table>
+        <table style="margin-top:8px"><tr style="background:#F0E6DD;font-weight:800;font-size:13px"><td class="lbl">차인지급액</td><td>${(thisDateTotal-dedTotal).toLocaleString("ko-KR")} 원</td></tr></table>
+        <div style="font-size:9.5px;color:#888;margin-top:6px">※ 국민연금은 이 항목과 무관하게 정기 지급일(${esc(run.payDate)})에서만 부과됩니다. 위 공제액은 이 지급분으로 인해 늘어난 건강보험ㆍ고용보험ㆍ소득세 등의 증분만 반영한 것입니다.</div>
+      </div>`);
+    }
+  });
+  if(!slips.length){ alert("해당 지급일에 지급 대상자가 없습니다."); return; }
+  openReportWindow(`급여명세서_${run.yearMonth}_${payDate}`, slips.join(""));
+}
+
+
 function openPayrollDetail(rowIdx){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   const row=run.rows[rowIdx]; if(!row) return;
+  row.payExtra=row.payExtra||[];
   document.getElementById("pdName").textContent=row.name;
   document.getElementById("pdMeta").textContent=`${row.dept||"—"} · ${row.position||"—"} · ${run.yearMonth} 귀속`+
     (row.prorated?` · 일할계산 ${row.workDays}/${row.monthDays}일 적용`:"")+
     (row.joinDate?` · 입사 ${row.joinDate}`:"")+(row.leaveDate?` · 퇴사 ${row.leaveDate}`:"");
+  const extraRows=row.payExtra.map((x,i)=>`<div class="pd-row" style="grid-template-columns:1fr 90px 108px 22px;gap:5px">
+      <input type="text" value="${esc(x.label)}" placeholder="예: 명절상여금" style="text-align:left;border-color:#DFCEC2" onchange="payrollExtraEdit(${rowIdx},${i},'label',this.value)">
+      <input type="text" inputmode="numeric" value="${(parseInt(digits(x.amount))||0).toLocaleString('ko-KR')}" onchange="payrollExtraEdit(${rowIdx},${i},'amount',this.value)">
+      <input type="date" value="${esc(x.payDate||run.payDate)}" title="이 항목만 다른 날짜에 지급하려면 변경하세요" onchange="payrollExtraEdit(${rowIdx},${i},'payDate',this.value)">
+      <button class="row-del" onclick="payrollExtraDel(${rowIdx},${i})">×</button>
+    </div>`).join("");
   document.getElementById("pdBody").innerHTML=`
     <div class="pd-cols">
       <div class="pd-col"><h4>급여항목</h4>
         ${PAY_COLUMNS.map(k=>`<div class="pd-row"><label>${k}</label><input type="text" inputmode="numeric" class="${row.pay[k].manual?"manual":""}"
           value="${row.pay[k].v.toLocaleString("ko-KR")}" onchange="payrollCellEdit(${rowIdx},'pay','${k}',this.value)"></div>`).join("")}
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
+          <div style="font-size:11px;font-weight:800;color:#7A5541;margin-bottom:4px">➕ 추가 급여 항목 (변동급·일회성)</div>
+          <div style="font-size:10.5px;color:var(--faint);margin-bottom:8px">인센티브·명절상여금처럼 근로계약에 넣을 수 없는 항목을 이 달 급여에만 자유롭게 추가합니다.</div>
+          <div id="pdExtraList">${extraRows}</div>
+          <button class="rtable-add" style="margin-top:6px" onclick="payrollExtraAdd(${rowIdx})">+ 항목 추가</button>
+        </div>
         <div class="pd-sumline"><span>지급액계</span><span id="pdPayTotal">${rowPayTotal(row).toLocaleString("ko-KR")} 원</span></div>
       </div>
       <div class="pd-col"><h4>공제항목</h4>
@@ -3485,12 +3686,48 @@ function openPayrollDetail(rowIdx){
   `;
   document.getElementById("payrollDetailOverlay").classList.add("show");
 }
+function payrollExtraAdd(rowIdx){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  const row=run.rows[rowIdx]; if(!row) return;
+  row.payExtra=row.payExtra||[];
+  row.payExtra.push({label:"", amount:0, payDate:run.payDate});
+  save(); openPayrollDetail(rowIdx);
+}
+function payrollExtraEdit(rowIdx, i, key, val_){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  const row=run.rows[rowIdx]; if(!row||!row.payExtra||!row.payExtra[i]) return;
+  row.payExtra[i][key] = key==="amount" ? (parseInt(digits(val_))||0) : val_;
+  if(key==="amount") recalcNonNpDeductions(row, row.empId); // 세전금액 변동 → 국민연금 제외 자동 재계산
+  save(); openPayrollDetail(rowIdx);
+}
+function payrollExtraDel(rowIdx, i){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  const row=run.rows[rowIdx]; if(!row||!row.payExtra) return;
+  row.payExtra.splice(i,1);
+  recalcNonNpDeductions(row, row.empId);
+  save(); openPayrollDetail(rowIdx);
+}
 function closePayrollDetail(){ document.getElementById("payrollDetailOverlay").classList.remove("show"); curYETarget=null; if(curPayrollRunId!=null) renderPayrollGrid(); }
 /* 국민연금을 제외한 나머지 공제(건강보험/고용보험/장기요양/소득세/지방세)를
    현재 pay 항목 합계(비과세 한도 인지) 기준으로 재계산한다. 인센티브·상여금 등 변동급을
    수기 수정했을 때, 국민연금은 매달 고지금액이 고정이라 그대로 두고 나머지만 따라 움직여야 하기 때문. */
+/* 급여명세서를 지급일별로 쪼갤 때 쓰는 '기본(정기항목만) 공제' 계산 — payExtra 없이 계산해서
+   그 차이(전체공제-기본공제)를 인센티브 등 추가항목이 실제 지급되는 날짜의 명세서에 배분한다. */
+function computeBaseDeductions(row, empId){
+  const fixedBase=PAY_COLUMNS.reduce((s,k)=>s+(PAY_TAXFREE.has(k)?taxfreeExcessPortion(k,row.pay[k].v):row.pay[k].v),0);
+  const e=findEmp(empId);
+  const dep=e ? (parseInt(migrateContract(e).dedFamilyCount)||1) : 1;
+  const st=fixedBase>0 ? calcStatutoryDeductions(fixedBase,dep) : {hi:0,ei:0,ltc:0,it:0,lt:0};
+  return {hi:st.hi, ei:st.ei, ltc:st.ltc, it:st.it, lt:st.lt};
+}
 function recalcNonNpDeductions(row, empId){
-  const dedBase=PAY_COLUMNS.reduce((s,k)=>s+(PAY_TAXFREE.has(k)?taxfreeExcessPortion(k,row.pay[k].v):row.pay[k].v),0);
+  const fixedBase=PAY_COLUMNS.reduce((s,k)=>s+(PAY_TAXFREE.has(k)?taxfreeExcessPortion(k,row.pay[k].v):row.pay[k].v),0);
+  const extraBase=(row.payExtra||[]).reduce((s,x)=>{
+    const amt=parseInt(digits(x.amount))||0;
+    const label=val(x.label);
+    return s + (STATUTORY_TAXFREE_LIMITS[label] ? taxfreeExcessPortion(label,amt) : amt);
+  },0);
+  const dedBase=fixedBase+extraBase;
   const e=findEmp(empId);
   const dep=e ? (parseInt(migrateContract(e).dedFamilyCount)||1) : 1;
   const st=dedBase>0 ? calcStatutoryDeductions(dedBase,dep) : {hi:0,ei:0,ltc:0,it:0,lt:0};
@@ -3512,6 +3749,7 @@ function payrollCellEdit(rowIdx, group, key, strVal){
 
 /* ═══════════════════════ 급여관리 보고서 5종 ═══════════════════════ */
 function companyNameGuess(){
+  if(COMPANY_INFO && COMPANY_INFO.name) return COMPANY_INFO.name;
   for(const e of EMPLOYEES){ const c=e.contract; if(c && c.empName) return c.empName; }
   return "";
 }
@@ -3537,20 +3775,42 @@ function openReportWindow(title, bodyHtml){
   </body></html>`);
   w.document.close();
 }
+/* 귀속월·지급일 기준으로 급여 작업을 선택하게 하는 헬퍼 — 은행별이체명세서·원천징수이행상황신고서 등에서 사용 */
+let reportPickerCallback=null;
+function pickPayrollRun(callback){
+  if(!PAYROLL_RUNS.length){ alert("급여 작업이 없습니다. 먼저 급여 작업을 만들어주세요."); return; }
+  const runs=[...PAYROLL_RUNS].sort((a,b)=>b.yearMonth.localeCompare(a.yearMonth));
+  const cur=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId);
+  reportPickerCallback=callback;
+  document.getElementById("rpBody").innerHTML = runs.map(r=>
+    `<div class="pr-run-chip${cur&&cur.id===r.id?" on":""}" style="width:100%;margin-bottom:8px;justify-content:space-between;box-sizing:border-box" onclick="pickReportRun(${r.id})">
+       <span>🗓 ${esc(r.yearMonth)} 귀속 · 지급일 ${esc(r.payDate)}</span><span>${r.rows.length}명</span>
+     </div>`
+  ).join("");
+  document.getElementById("reportPickerOverlay").classList.add("show");
+}
+function pickReportRun(id){
+  const run=PAYROLL_RUNS.find(r=>r.id===id);
+  document.getElementById("reportPickerOverlay").classList.remove("show");
+  const cb=reportPickerCallback; reportPickerCallback=null;
+  if(run && cb) cb(run);
+}
+function closeReportPicker(){ document.getElementById("reportPickerOverlay").classList.remove("show"); reportPickerCallback=null; }
 
 /* 1) 임금대장 (근로기준법 시행령 제27조 관련 서식 참고) */
 function openWageLedger(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run){ alert("먼저 급여 작업을 선택해주세요."); return; }
-  const cols=[...PAY_COLUMNS, "지급액계", ...DEDUCT_COLUMNS, "공제액계", "차인지급액"];
+  const cols=[...PAY_COLUMNS, "기타(추가항목)", "지급액계", ...DEDUCT_COLUMNS, "공제액계", "차인지급액"];
   const rows=run.rows.map(row=>{
-    const pt=rowPayTotal(row), dt=rowDeductTotal(row);
-    const cells=[...PAY_COLUMNS.map(k=>row.pay[k].v), pt, ...DEDUCT_COLUMNS.map(k=>row.deduct[k].v), dt, pt-dt];
-    return `<tr><td class="lbl">${esc(row.name)}</td><td class="ctr">${esc(row.dept||"—")}</td><td class="ctr">${esc(row.position||"—")}</td>
+    const pt=rowPayTotal(row), dt=rowDeductTotal(row), extra=rowExtraTotal(row);
+    const cells=[...PAY_COLUMNS.map(k=>row.pay[k].v), extra, pt, ...DEDUCT_COLUMNS.map(k=>row.deduct[k].v), dt, pt-dt];
+    const extraNote=(row.payExtra||[]).length?`<br><span style="font-weight:400;font-size:9px;color:#888">(${row.payExtra.map(x=>esc(x.label||"—")+" "+((parseInt(digits(x.amount))||0).toLocaleString("ko-KR"))).join(", ")})</span>`:"";
+    return `<tr><td class="lbl">${esc(row.name)}${extraNote}</td><td class="ctr">${esc(row.dept||"—")}</td><td class="ctr">${esc(row.position||"—")}</td>
       <td class="ctr">${esc(row.joinDate||"—")}</td><td class="ctr">${esc(row.leaveDate||"—")}</td><td class="ctr">${row.workDays}/${row.monthDays}</td>
       ${cells.map(v=>`<td>${v?v.toLocaleString("ko-KR"):"-"}</td>`).join("")}</tr>`;
   }).join("");
   const totalsRow=(arr)=>arr.reduce((s,row)=>s+row,0);
-  const sumCells=[...PAY_COLUMNS.map(k=>totalsRow(run.rows.map(r=>r.pay[k].v))), totalsRow(run.rows.map(rowPayTotal)),
+  const sumCells=[...PAY_COLUMNS.map(k=>totalsRow(run.rows.map(r=>r.pay[k].v))), totalsRow(run.rows.map(rowExtraTotal)), totalsRow(run.rows.map(rowPayTotal)),
     ...DEDUCT_COLUMNS.map(k=>totalsRow(run.rows.map(r=>r.deduct[k].v))), totalsRow(run.rows.map(rowDeductTotal)),
     totalsRow(run.rows.map(r=>rowPayTotal(r)-rowDeductTotal(r)))];
   const html=`<h1>임 금 대 장</h1><div class="sub">${esc(companyNameGuess()||"—")} · 귀속연월 ${esc(run.yearMonth)} · 지급일 ${esc(run.payDate)}</div>
@@ -3567,50 +3827,115 @@ function openMonthlyPayStatus(){
   if(!year) return;
   const runs=PAYROLL_RUNS.filter(r=>r.yearMonth.startsWith(year)).sort((a,b)=>a.yearMonth.localeCompare(b.yearMonth));
   if(!runs.length){ alert(`${year}년에 만들어진 급여 작업이 없습니다.`); return; }
-  const empIds=[...new Set(runs.flatMap(r=>r.rows.map(row=>row.empId)))];
-  const empRows=empIds.map(id=>{
-    const first=runs.map(r=>r.rows.find(row=>row.empId===id)).find(Boolean);
-    let totalPay=0, totalDed=0;
-    const monthCells=runs.map(r=>{
-      const row=r.rows.find(rw=>rw.empId===id);
-      if(!row) return `<td>-</td><td>-</td>`;
-      const pt=rowPayTotal(row), dt=rowDeductTotal(row);
-      totalPay+=pt; totalDed+=dt;
-      return `<td>${pt.toLocaleString("ko-KR")}</td><td>${dt.toLocaleString("ko-KR")}</td>`;
-    }).join("");
-    return `<tr><td class="lbl">${esc(first?first.name:"")}</td><td>${totalPay.toLocaleString("ko-KR")}</td><td>${totalDed.toLocaleString("ko-KR")}</td>${monthCells}</tr>`;
-  }).join("");
-  const html=`<h1>월별 급상여수당 지급현황</h1><div class="sub">${esc(companyNameGuess()||"—")} · ${esc(year)}년</div>
-  <table><thead><tr><th rowspan="2">사원명</th><th colspan="2">총계</th>${runs.map(r=>`<th colspan="2">${r.yearMonth.slice(5)}월</th>`).join("")}</tr>
-  <tr><th>지급총액</th><th>공제총액</th>${runs.map(()=>`<th>지급액</th><th>공제액</th>`).join("")}</tr></thead>
-  <tbody>${empRows}</tbody></table>`;
-  openReportWindow(`월별급상여수당지급현황_${year}`, html);
+  const months=runs.map(r=>r.yearMonth);
+  const empMap={};
+  runs.forEach(r=>r.rows.forEach(row=>{ if(!empMap[row.empId]) empMap[row.empId]={id:row.empId, name:row.name, dept:row.dept||""}; }));
+  const empList=Object.values(empMap).sort((a,b)=>a.id-b.id);
+
+  // 대상(전체=0, 사원ID)별로 [수당명 × 월] 매트릭스 + 지급/공제/차인 합계를 미리 계산
+  const buildMatrix=(targetId)=>{
+    const items={}; PAY_COLUMNS.forEach(k=>items[k]=months.map(()=>0));
+    const payT=months.map(()=>0), dedT=months.map(()=>0);
+    runs.forEach((r,mi)=>{
+      const rows = targetId===0 ? r.rows : r.rows.filter(row=>row.empId===targetId);
+      rows.forEach(row=>{
+        PAY_COLUMNS.forEach(k=>{ items[k][mi]+=row.pay[k].v; });
+        (row.payExtra||[]).forEach(x=>{ items["기타(추가항목)"]=items["기타(추가항목)"]||months.map(()=>0); items["기타(추가항목)"][mi]+=parseInt(digits(x.amount))||0; });
+        payT[mi]+=rowPayTotal(row); dedT[mi]+=rowDeductTotal(row);
+      });
+    });
+    return {items, payT, dedT};
+  };
+  const dataByTarget={0:buildMatrix(0)};
+  empList.forEach(e=>{ dataByTarget[e.id]=buildMatrix(e.id); });
+
+  const w=window.open("","_blank");
+  if(!w){ alert("팝업이 차단되었습니다. 팝업을 허용해 주세요."); return; }
+  const itemLabels=[...PAY_COLUMNS, ...(dataByTarget[0].items["기타(추가항목)"]?["기타(추가항목)"]:[])];
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>월별급상여수당지급현황_${esc(year)}</title>
+  <style>
+    body{font-family:'Malgun Gothic',sans-serif;margin:0;color:#222;display:flex;height:100vh}
+    .toolbar{position:fixed;top:0;left:0;right:0;background:#fff;padding:10px 16px;border-bottom:1px solid #ddd;z-index:5;display:flex;align-items:center;gap:12px}
+    .toolbar button{padding:7px 14px;font-size:13px;border:1px solid #999;border-radius:6px;background:#F3EAE3;cursor:pointer}
+    h1{font-size:16px;margin:0}
+    .body{display:flex;margin-top:52px;width:100%}
+    .side{width:220px;border-right:1px solid #ddd;overflow-y:auto;height:calc(100vh - 52px)}
+    .side div{padding:8px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid #f0f0f0}
+    .side div:hover{background:#FAF5F0}
+    .side div.on{background:#4A2F22;color:#fff}
+    .main{flex:1;overflow:auto;height:calc(100vh - 52px);padding:14px}
+    table{border-collapse:collapse;width:100%;font-size:11px}
+    th,td{border:1px solid #ccc;padding:5px 8px;text-align:right;white-space:nowrap}
+    th{background:#F0E6DD;text-align:center;font-weight:700;position:sticky;top:0}
+    td.lbl{text-align:left;font-weight:700;background:#FAF5F0;position:sticky;left:0}
+    tr.sum td{background:#EFE3D8;font-weight:800}
+    @media print{ .toolbar,.side{display:none} .body{margin-top:0} .main{height:auto} }
+  </style></head><body>
+  <div class="toolbar"><h1>월별 급상여수당 지급현황 — ${esc(companyNameGuess()||"—")} · ${esc(year)}년</h1><span style="flex:1"></span><button onclick="window.print()">🖨 인쇄 · PDF 저장</button></div>
+  <div class="body">
+    <div class="side" id="side">
+      <div data-id="0" class="on">🏢 전체</div>
+      ${empList.map(e=>`<div data-id="${e.id}">${esc(e.name)}${e.dept?` · ${esc(e.dept)}`:""}</div>`).join("")}
+    </div>
+    <div class="main" id="main"></div>
+  </div>
+  <script>
+    const MONTHS=${JSON.stringify(months)};
+    const ITEM_LABELS=${JSON.stringify(itemLabels)};
+    const DATA=${JSON.stringify(dataByTarget)};
+    const NAMES={0:"전체", ${empList.map(e=>`${e.id}:${JSON.stringify(e.name)}`).join(",")}};
+    function fmt(n){ return (n||0).toLocaleString("ko-KR"); }
+    function render(id){
+      document.querySelectorAll("#side div").forEach(d=>d.classList.toggle("on", d.getAttribute("data-id")===String(id)));
+      const d=DATA[id];
+      const rows=ITEM_LABELS.map(k=>{
+        const arr=d.items[k]||MONTHS.map(()=>0);
+        const total=arr.reduce((s,v)=>s+v,0);
+        if(!total) return "";
+        return "<tr><td class=\\"lbl\\">"+k+"</td><td>"+fmt(total)+"</td>"+arr.map(v=>"<td>"+fmt(v)+"</td>").join("")+"</tr>";
+      }).join("");
+      const sumRow=(label,arr)=>"<tr class=\\"sum\\"><td class=\\"lbl\\">"+label+"</td><td>"+fmt(arr.reduce((s,v)=>s+v,0))+"</td>"+arr.map(v=>"<td>"+fmt(v)+"</td>").join("")+"</tr>";
+      document.getElementById("main").innerHTML =
+        "<div style='font-size:13px;font-weight:800;margin-bottom:8px'>"+NAMES[id]+"</div>"+
+        "<table><thead><tr><th>수당명</th><th>총계</th>"+MONTHS.map(m=>"<th>"+m.slice(5)+"월</th>").join("")+"</tr></thead><tbody>"+
+        rows+
+        sumRow("지급액계", d.payT)+
+        sumRow("공제액계", d.dedT)+
+        sumRow("차인지급액계", d.payT.map((v,i)=>v-d.dedT[i]))+
+        "</tbody></table>";
+    }
+    document.getElementById("side").addEventListener("click", e=>{
+      const t=e.target.closest("[data-id]"); if(t) render(t.getAttribute("data-id"));
+    });
+    render(0);
+  <\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 /* 3) 은행별 이체명세서 */
 function openBankTransferSheet(){
-  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId);
-  const target = run || [...PAYROLL_RUNS].sort((a,b)=>b.yearMonth.localeCompare(a.yearMonth))[0];
-  if(!target){ alert("급여 작업이 없습니다. 먼저 급여 작업을 만들어주세요."); return; }
-  const items=target.rows.map(row=>{
-    const e=findEmp(row.empId);
-    const net=rowPayTotal(row)-rowDeductTotal(row);
-    return { name:row.name, bank:(e&&e.bankName)||"", account:(e&&e.accountNo)||"", holder:(e&&e.accountHolder)||row.name, net };
+  pickPayrollRun(target=>{
+    const items=target.rows.map(row=>{
+      const e=findEmp(row.empId);
+      const net=rowPayTotal(row)-rowDeductTotal(row);
+      return { name:row.name, bank:(e&&e.bankName)||"", account:(e&&e.accountNo)||"", holder:(e&&e.accountHolder)||row.name, net };
+    });
+    const byBank={};
+    items.forEach(it=>{ const k=it.bank||"(미등록)"; (byBank[k]=byBank[k]||[]).push(it); });
+    const bankSections=Object.keys(byBank).sort().map(bank=>{
+      const list=byBank[bank];
+      const sub=list.reduce((s,it)=>s+it.net,0);
+      return `<tr style="background:#F0E6DD"><td class="lbl" colspan="5">${esc(bank)} (${list.length}명)</td></tr>
+        ${list.map(it=>`<tr><td class="lbl">${esc(it.name)}</td><td class="ctr">${esc(it.bank||"—")}</td><td class="ctr">${esc(it.account||"—")}</td><td class="ctr">${esc(it.holder)}</td><td>${it.net.toLocaleString("ko-KR")}</td></tr>`).join("")}
+        <tr style="font-weight:700"><td class="lbl" colspan="4">${esc(bank)} 소계</td><td>${sub.toLocaleString("ko-KR")}</td></tr>`;
+    }).join("");
+    const grand=items.reduce((s,it)=>s+it.net,0);
+    const html=`<h1>은행별 이체명세서</h1><div class="sub">${esc(companyNameGuess()||"—")} · 귀속연월 ${esc(target.yearMonth)} · 지급일 ${esc(target.payDate)}</div>
+    <table><thead><tr><th>사원명</th><th>이체은행</th><th>계좌번호</th><th>예금주</th><th>이체금액(차인지급액)</th></tr></thead>
+    <tbody>${bankSections}<tr style="background:#F3EAE3;font-weight:800"><td class="lbl" colspan="4">총계 (${items.length}명)</td><td>${grand.toLocaleString("ko-KR")}</td></tr></tbody></table>`;
+    openReportWindow(`은행별이체명세서_${target.yearMonth}`, html);
   });
-  const byBank={};
-  items.forEach(it=>{ const k=it.bank||"(미등록)"; (byBank[k]=byBank[k]||[]).push(it); });
-  const bankSections=Object.keys(byBank).sort().map(bank=>{
-    const list=byBank[bank];
-    const sub=list.reduce((s,it)=>s+it.net,0);
-    return `<tr style="background:#F0E6DD"><td class="lbl" colspan="5">${esc(bank)} (${list.length}명)</td></tr>
-      ${list.map(it=>`<tr><td class="lbl">${esc(it.name)}</td><td class="ctr">${esc(it.bank||"—")}</td><td class="ctr">${esc(it.account||"—")}</td><td class="ctr">${esc(it.holder)}</td><td>${it.net.toLocaleString("ko-KR")}</td></tr>`).join("")}
-      <tr style="font-weight:700"><td class="lbl" colspan="4">${esc(bank)} 소계</td><td>${sub.toLocaleString("ko-KR")}</td></tr>`;
-  }).join("");
-  const grand=items.reduce((s,it)=>s+it.net,0);
-  const html=`<h1>은행별 이체명세서</h1><div class="sub">${esc(companyNameGuess()||"—")} · 귀속연월 ${esc(target.yearMonth)} · 지급일 ${esc(target.payDate)}</div>
-  <table><thead><tr><th>사원명</th><th>이체은행</th><th>계좌번호</th><th>예금주</th><th>이체금액(차인지급액)</th></tr></thead>
-  <tbody>${bankSections}<tr style="background:#F3EAE3;font-weight:800"><td class="lbl" colspan="4">총계 (${items.length}명)</td><td>${grand.toLocaleString("ko-KR")}</td></tr></tbody></table>`;
-  openReportWindow(`은행별이체명세서_${target.yearMonth}`, html);
 }
 
 /* 4) 연말정산 근로소득원천징수영수증 (국세청 표준 서식 간소화 버전 —
@@ -3685,7 +4010,18 @@ function tallyAnnualPayroll(empId, year){
   const runs=PAYROLL_RUNS.filter(r=>r.yearMonth.startsWith(year));
   const rows=runs.map(r=>r.rows.find(row=>row.empId===empId)).filter(Boolean);
   const totalPay=rows.reduce((s,r)=>s+rowPayTotal(r),0);
-  const totalTaxfree=rows.reduce((s,r)=>s+PAY_COLUMNS.filter(k=>PAY_TAXFREE.has(k)).reduce((s2,k)=>s2+r.pay[k].v,0),0);
+  // 비과세 총액: 월별 급여 계산과 동일하게 법정 한도까지만 비과세로 인정(초과분은 과세대상), 추가 급여 항목도 포함
+  const totalTaxfree=rows.reduce((s,r)=>{
+    const fixedTf=PAY_COLUMNS.filter(k=>PAY_TAXFREE.has(k)).reduce((s2,k)=>{
+      const v=r.pay[k].v; return s2+Math.max(0, v-taxfreeExcessPortion(k,v));
+    },0);
+    const extraTf=(r.payExtra||[]).reduce((s2,x)=>{
+      const amt=parseInt(digits(x.amount))||0, label=val(x.label);
+      if(!STATUTORY_TAXFREE_LIMITS[label]) return s2;
+      return s2+Math.max(0, amt-taxfreeExcessPortion(label,amt));
+    },0);
+    return s+fixedTf+extraTf;
+  },0);
   const totalNP=rows.reduce((s,r)=>s+r.deduct["국민연금"].v,0);
   const totalHIEI=rows.reduce((s,r)=>s+r.deduct["건강보험"].v+r.deduct["고용보험"].v+r.deduct["장기요양보험료"].v,0);
   const totalIT=rows.reduce((s,r)=>s+r.deduct["소득세"].v,0);
@@ -3694,7 +4030,7 @@ function tallyAnnualPayroll(empId, year){
 }
 /* 종합 계산 파이프라인 */
 /* 중소기업 취업자 소득세 감면 (조특법 제30조): 청년 5년·90%, 60세이상/장애인/경력단절근로자 3년·70%, 과세기간별 200만원 한도 */
-function calcSmeReduction(smeType, smeStartStr, decidedTaxBeforeSme, year){
+function calcSmeReduction(smeType, smeStartStr, calcTax, year){
   if(!smeType || !smeStartStr) return {eligible:false, rate:0, inPeriod:false, creditAmount:0};
   const start=parseYmd(smeStartStr); if(!start) return {eligible:false, rate:0, inPeriod:false, creditAmount:0};
   const years = smeType==="youth" ? 5 : 3;
@@ -3704,7 +4040,7 @@ function calcSmeReduction(smeType, smeStartStr, decidedTaxBeforeSme, year){
   const yearStart=new Date(y,0,1), yearEnd=new Date(y,11,31);
   const inPeriod = start<=yearEnd && yearStart<=endDate;
   if(!inPeriod) return {eligible:true, rate, inPeriod:false, creditAmount:0};
-  const creditAmount=Math.min(Math.round(decidedTaxBeforeSme*rate), 2000000);
+  const creditAmount=Math.min(Math.round(calcTax*rate), 2000000);
   return {eligible:true, rate, inPeriod:true, creditAmount};
 }
 function calcYearEndSettlement(e, year, isLeaver){
@@ -3717,8 +4053,9 @@ function calcYearEndSettlement(e, year, isLeaver){
   const dep=isLeaver ? {basicCount:1, elderly:0, disabled:0, child8plus:0} : tallyDependents(e);
   const personalDeduction=dep.basicCount*1500000 + dep.elderly*1000000 + dep.disabled*2000000;
   const pensionDeduction=p.totalNP;
-  const specialDeduction=isLeaver?0:p.totalHIEI;
   const useStandard=!!d.useStandard;
+  // 표준세액공제(13만원)를 선택하면 건강보험료·고용보험료·장기요양보험료 등 특별소득공제는 적용받을 수 없음(양자택일)
+  const specialDeduction=(isLeaver||useStandard)?0:p.totalHIEI;
   const insGeneral=isLeaver?0:Math.min(parseInt(digits(d.insGeneral))||0,1000000);
   const insDisabled=isLeaver?0:Math.min(parseInt(digits(d.insDisabled))||0,1000000);
   const medicalPaid=isLeaver?0:parseInt(digits(d.medical))||0;
@@ -3740,17 +4077,17 @@ function calcYearEndSettlement(e, year, isLeaver){
   const standardCredit=130000;
   const specialCreditChosen=useStandard?standardCredit:itemizedCredit;
   const totalCredit=earnedCredit+childCredit+pensionCredit+specialCreditChosen;
-  const decidedTaxBeforeSme=Math.max(0, calcTax-totalCredit);
-  // 중소기업 취업자 소득세 감면: 서류 제출 기반 감면이라 중도퇴사자에게도 적용 가능(특별소득·세액공제와 성격이 다름)
-  const sme=calcSmeReduction(d.smeType, d.smeStart, decidedTaxBeforeSme, year);
-  const decidedTax=Math.max(0, decidedTaxBeforeSme-sme.creditAmount);
+  // 국세청 서식(별지 제24호서식) 72번 산식: 결정세액 = 50산출세액 - 55세액감면계 - 71세액공제계
+  // (중소기업취업감면은 세액공제가 아니라 '세액감면' 항목이라, 세액공제와 별개로 산출세액 기준으로 계산됨)
+  const sme=calcSmeReduction(d.smeType, d.smeStart, calcTax, year);
+  const decidedTax=Math.max(0, calcTax-sme.creditAmount-totalCredit);
   const decidedLocalTax=Math.floor(decidedTax*0.1/10)*10;
   const refund=p.totalIT-decidedTax; // 양수면 환급, 음수면 추가납부
   const refundLocal=p.totalLT-decidedLocalTax;
   return {p, salary, earnedDeduction, earnedIncome, dep, personalDeduction, pensionDeduction, specialDeduction,
     insGeneral, insDisabled, medicalPaid, educationPaid, donationPaid, pensionPaid, useStandard,
     totalDeduction, taxBase, calcTax, earnedCredit, childCredit, pensionCredit, insCredit, medicalCredit,
-    educationCredit, donationCredit, itemizedCredit, specialCreditChosen, totalCredit, decidedTaxBeforeSme, sme,
+    educationCredit, donationCredit, itemizedCredit, specialCreditChosen, totalCredit, sme,
     decidedTax, decidedLocalTax, refund, refundLocal, isLeaver};
 }
 function empYearEnd(empId, year, key, val){
@@ -3881,7 +4218,7 @@ function renderYearEndCalc(empId, year){
         <div class="pd-row"><label>근로소득금액</label><input value="${r.earnedIncome.toLocaleString('ko-KR')}" disabled></div>
         <div class="pd-row"><label>인적공제(${r.dep.basicCount}인)</label><input value="${r.personalDeduction.toLocaleString('ko-KR')}" disabled></div>
         <div class="pd-row"><label>연금보험료공제(국민연금)</label><input value="${r.pensionDeduction.toLocaleString('ko-KR')}" disabled></div>
-        <div class="pd-row"><label>특별소득공제(건보·고용)</label><input value="${r.specialDeduction.toLocaleString('ko-KR')}" disabled></div>
+        <div class="pd-row"><label>특별소득공제(건보·고용)${r.useStandard&&!isLeaver?" ⚠미적용":""}</label><input value="${r.specialDeduction.toLocaleString('ko-KR')}" disabled></div>
         <div class="pd-sumline"><span>과세표준</span><span>${r.taxBase.toLocaleString('ko-KR')} 원</span></div>
         <div class="pd-sumline"><span>산출세액</span><span>${r.calcTax.toLocaleString('ko-KR')} 원</span></div>
       </div>
@@ -3894,6 +4231,7 @@ function renderYearEndCalc(empId, year){
         ${inputRow("연금계좌 납입액","pensionAccount",d.pensionAccount)}
         <div class="pd-row"><label>표준세액공제(13만원) 선택</label>
           <input type="checkbox" style="justify-self:end" ${d.useStandard?"checked":""} onchange="empYearEnd(${empId},'${year}','useStandard',this.checked)"></div>
+        <div style="font-size:10.5px;color:#B23B3B;margin-top:6px;line-height:1.5">⚠ 표준세액공제(13만원)는 <b>건강보험료·고용보험료 등 특별소득공제(${(isLeaver?0:r.p.totalHIEI).toLocaleString('ko-KR')}원)와 양자택일</b>입니다. 특별소득공제를 포기하는 대신 13만원을 받는 것이므로, 어느 쪽이 유리한지는 세율구간에 따라 다릅니다 — 아래 결정세액을 체크박스 on/off로 비교해보고 더 낮은 쪽을 선택하세요.</div>
         <div style="font-size:10.5px;color:var(--faint);margin-top:6px">※ 신용카드 등 사용액 소득공제, 주택자금·월세 공제는 계산식이 복잡해 이 계산기에 포함하지 않았습니다. 필요 시 결정세액을 직접 수정하세요.</div>
       </div>
     </div>
@@ -3941,98 +4279,255 @@ function yeNav(dir){
 }
 function printYearEndSlip(empId, year, isLeaver){
   const e=findEmp(empId); const r=calcYearEndSettlement(e, year, isLeaver);
-  const html=`
-    <div style="border:2px solid #333;padding:16px">
-      <h1 style="font-size:16px">근로소득 원천징수영수증 (${esc(year)}년 귀속${isLeaver?" · 중도퇴사자 정산":""})</h1>
-      <table><tr><td class="lbl" style="width:120px">근무처</td><td>${esc(companyNameGuess()||"—")}</td><td class="lbl" style="width:120px">성명</td><td>${esc(e.name)}</td></tr>
-      <tr><td class="lbl">주민등록번호</td><td>${esc(e.rrn||"—")}</td><td class="lbl">근무기간</td><td>${esc(year)}.01.01 ~ ${esc(isLeaver?e.leaveDate:year+".12.31")}</td></tr></table>
-      <h3 style="font-size:12px;margin:14px 0 6px">Ⅰ. 소득명세 · 근로소득금액</h3>
-      <table><tr><td class="lbl">총급여액</td><td>${r.salary.toLocaleString("ko-KR")}</td><td class="lbl">근로소득공제</td><td>${r.earnedDeduction.toLocaleString("ko-KR")}</td></tr>
-      <tr><td class="lbl">근로소득금액</td><td colspan="3">${r.earnedIncome.toLocaleString("ko-KR")}</td></tr></table>
-      <h3 style="font-size:12px;margin:14px 0 6px">Ⅱ. 종합소득공제</h3>
-      <table><tr><td class="lbl">인적공제(${r.dep.basicCount}인)</td><td>${r.personalDeduction.toLocaleString("ko-KR")}</td><td class="lbl">연금보험료공제</td><td>${r.pensionDeduction.toLocaleString("ko-KR")}</td></tr>
-      <tr><td class="lbl">특별소득공제</td><td>${r.specialDeduction.toLocaleString("ko-KR")}</td><td class="lbl">공제 합계</td><td>${r.totalDeduction.toLocaleString("ko-KR")}</td></tr></table>
-      <h3 style="font-size:12px;margin:14px 0 6px">Ⅲ. 과세표준 · 세액계산</h3>
-      <table><tr><td class="lbl">과세표준</td><td>${r.taxBase.toLocaleString("ko-KR")}</td><td class="lbl">산출세액</td><td>${r.calcTax.toLocaleString("ko-KR")}</td></tr>
-      <tr><td class="lbl">세액공제 합계</td><td>${r.totalCredit.toLocaleString("ko-KR")}</td><td class="lbl">세액감면 전 세액</td><td>${r.decidedTaxBeforeSme.toLocaleString("ko-KR")}</td></tr></table>
-      <h3 style="font-size:12px;margin:14px 0 6px">Ⅳ. 세액감면 · 결정세액 · 차감징수세액</h3>
-      <table><tr><td class="lbl">중소기업취업감면${r.sme.eligible?`(${r.sme.rate*100}%${r.sme.inPeriod?"":", 기간만료"})`:""}</td><td>${r.sme.creditAmount.toLocaleString("ko-KR")}</td><td class="lbl">결정세액</td><td>${r.decidedTax.toLocaleString("ko-KR")}</td></tr>
-      <tr><td class="lbl">기납부세액</td><td colspan="3">${r.p.totalIT.toLocaleString("ko-KR")}</td></tr>
-      <tr style="background:#F3EAE3;font-weight:800"><td class="lbl">${r.refund>=0?"차감징수세액(환급)":"차감징수세액(추가납부)"}</td><td colspan="3">${Math.abs(r.refund).toLocaleString("ko-KR")}</td></tr></table>
-    </div>`;
-  openReportWindow(`연말정산_근로소득원천징수영수증_${e.name}_${year}`, `<div class="sub" style="margin-bottom:14px">⚠ 신용카드 등 사용액 소득공제, 주택자금·월세 공제는 반영되지 않았습니다. 필요 시 결정세액을 세무 담당자와 확인 후 반영해주세요.</div>${html}`);
+  const ci=companyInfoFull();
+  const zero=(v)=>v?v.toLocaleString("ko-KR"):"0";
+  const fam=(e.family||[]).filter(f=>f.incomeOk!==false && (val(f.relation)||val(f.name)));
+  const spouseCnt=fam.filter(f=>val(f.relation).includes("배우자")).length;
+  const otherDepCnt=Math.max(0,r.dep.basicCount-1-spouseCnt);
+  const grossPay=r.p.totalPay-r.p.totalTaxfree;
+
+  // 78번 인적공제 항목 표 행 (본인 + 가족)
+  const persRows=[{relation:"0",name:e.name+"(근로자 본인)",self:true}, ...fam.map(f=>({relation:val(f.relation)||"1",name:f.name,disabled:f.disabled,age:parseInt(f.age)||0}))];
+  const persTableRows=persRows.map((p,i)=>`<tr>
+    <td class="ctr">${esc(p.relation)}</td><td>${esc(p.name)}</td>
+    <td class="ctr">${p.self||true?"○":""}</td><td class="ctr">${!p.self&&p.age>=70?"○":""}</td><td></td><td></td>
+    <td class="ctr">${p.disabled?"1":""}</td><td></td>
+    <td class="ctr">국세청</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>`).join("");
+
+  const w=window.open("","_blank");
+  if(!w){ alert("팝업이 차단되었습니다. 팝업을 허용해 주세요."); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>근로소득원천징수영수증_${esc(e.name)}_${esc(year)}</title>
+  <style>
+    body{font-family:'Malgun Gothic',dotum,sans-serif;margin:0;color:#111;font-size:10.5px}
+    .toolbar{position:sticky;top:0;background:#fff;padding:10px 16px;border-bottom:1px solid #ddd;z-index:5}
+    .toolbar button{padding:7px 14px;font-size:13px;border:1px solid #999;border-radius:6px;background:#F3EAE3;cursor:pointer}
+    .page{width:210mm;min-height:296mm;margin:14px auto;padding:10mm;box-sizing:border-box;border:1px solid #999;background:#fff;position:relative}
+    .pagenum{position:absolute;top:4mm;right:8mm;font-size:9px;color:#555}
+    table{border-collapse:collapse;width:100%}
+    td,th{border:1px solid #333;padding:2.5px 4px;vertical-align:middle}
+    .noborder{border:none!important}
+    .ctr{text-align:center}
+    .r{text-align:right}
+    .lbl{background:#F2F2F2;font-weight:700;white-space:nowrap}
+    .side{writing-mode:vertical-rl;text-align:center;background:#F2F2F2;font-weight:700;width:16px;padding:2px}
+    .title{text-align:center;font-size:16px;font-weight:800;margin:8px 0}
+    .checkbox{display:inline-block;width:11px;height:11px;border:1px solid #333;text-align:center;line-height:11px;font-size:9px;margin-right:3px}
+    .sec-h{font-weight:800;font-size:10.5px;margin:10px 0 3px}
+    .foot{font-size:9px;color:#555;margin-top:6px}
+    @media print{ .toolbar{display:none} body{margin:0} .page{border:none;margin:0;width:auto;min-height:0;page-break-after:always} }
+  </style></head><body>
+  <div class="toolbar"><button onclick="window.print()">🖨 인쇄 · PDF 저장</button></div>
+
+  <!-- ══════════ 1쪽 ══════════ -->
+  <div class="page">
+    <div class="pagenum">(3쪽 중 제1쪽)</div>
+    <table style="margin-bottom:4px"><tr>
+      <td class="ctr" style="width:70px">관리<br>번호</td><td style="width:70px"></td>
+      <td colspan="2" class="noborder" style="border:1px solid #333!important;padding:6px">
+        <span class="checkbox">■</span>근로소득 원천징수영수증<br><span class="checkbox"> </span>근로소득 지급명세서<br>
+        <span style="font-size:9px">([ ]소득자 보관용 [ ]발행자 보관용 [■]발행자 보고용)</span>
+      </td>
+      <td style="width:230px;padding:0">
+        <table style="font-size:9px"><tr><td class="lbl">거주구분</td><td class="ctr">거주자①/비거주자2</td></tr>
+        <tr><td class="lbl">거주지국</td><td class="ctr">한국</td></tr>
+        <tr><td class="lbl">내ㆍ외국인</td><td class="ctr">내국인①/외국인9</td></tr>
+        <tr><td class="lbl">세대주 여부</td><td class="ctr">${fam.length?"세대주①":"세대원②"}</td></tr>
+        <tr><td class="lbl">연말정산 구분</td><td class="ctr">${isLeaver?"중도퇴사②":"계속근로①"}</td></tr></table>
+      </td>
+    </tr></table>
+
+    <table style="margin-bottom:4px">
+      <tr><td class="side" rowspan="4">징수의무자</td><td class="lbl" style="width:130px">① 법인명(상호)</td><td>${esc(ci.name||"—")}</td><td class="lbl" style="width:100px">② 대표자(성명)</td><td>${esc(ci.ceoName||"—")}</td></tr>
+      <tr><td class="lbl">③ 사업자등록번호</td><td>${esc(ci.bizRegNo||"—")}</td><td class="lbl">④ 주민등록번호</td><td></td></tr>
+      <tr><td class="lbl">③-1 사업자단위과세자 여부</td><td>여1/부②</td><td class="lbl">③-2 종사업장 일련번호</td><td></td></tr>
+      <tr><td class="lbl">⑤ 소재지(주소)</td><td colspan="3">${esc((ci.addr||"")+(ci.addrDetail?" "+ci.addrDetail:"")||"—")}</td></tr>
+    </table>
+
+    <table style="margin-bottom:4px">
+      <tr><td class="side" rowspan="2">소득자</td><td class="lbl" style="width:130px">⑥ 성 명</td><td>${esc(e.name)}</td><td class="lbl" style="width:180px">⑦ 주민등록번호(외국인등록번호)</td><td>${esc(e.rrn||"—")}</td></tr>
+      <tr><td class="lbl">⑧ 주 소</td><td colspan="3">${esc(e.addr||"—")}</td></tr>
+    </table>
+
+    <table style="margin-bottom:4px">
+      <tr><td class="side" rowspan="9" style="width:16px">Ⅰ근무처별소득명세</td>
+        <td class="lbl ctr">구 분</td><td class="lbl ctr">주(현)</td><td class="lbl ctr">종(전)</td><td class="lbl ctr">종(전)</td><td class="lbl ctr">16-1 납세조합</td><td class="lbl ctr">합 계</td></tr>
+      <tr><td class="lbl">⑨ 근무처명</td><td class="ctr">${esc(companyNameGuess()||"—")}</td><td></td><td></td><td></td><td class="ctr">${esc(companyNameGuess()||"—")}</td></tr>
+      <tr><td class="lbl">⑩ 사업자등록번호</td><td colspan="4"></td><td></td></tr>
+      <tr><td class="lbl">⑪ 근무기간</td><td class="ctr">${esc(year)}-01-01~${esc(isLeaver?e.leaveDate:year+"-12-31")}</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="lbl">⑫ 감면기간</td><td class="ctr">${r.sme.eligible&&r.sme.inPeriod?esc(e.contract&&e.contract.periodStart||""):""}</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="lbl">⑬ 급 여</td><td class="r">${zero(grossPay)}</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">${zero(grossPay)}</td></tr>
+      <tr><td class="lbl">⑭ 상 여</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td></tr>
+      <tr><td class="lbl">⑮ 인정상여 외</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td></tr>
+      <tr><td class="lbl">16 계</td><td class="r">${zero(grossPay)}</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">${zero(grossPay)}</td></tr>
+    </table>
+
+    <table style="margin-bottom:4px">
+      <tr><td class="side" rowspan="4" style="width:16px">Ⅱ비과세및감면소득명세</td>
+        <td class="lbl">18-40 비과세식대 (P01)</td><td class="r">${zero(r.p.totalTaxfree)}</td></tr>
+      <tr><td class="lbl">기타 비과세소득</td><td class="r">0</td></tr>
+      <tr><td class="lbl">20 비과세소득 계</td><td class="r">${zero(r.p.totalTaxfree)}</td></tr>
+      <tr><td class="lbl">20-1 감면소득 계 ${r.sme.eligible&&r.sme.inPeriod?`(조특법 제30조 ${r.sme.rate*100}%)`:""}</td><td class="r">${r.sme.eligible&&r.sme.inPeriod?zero(grossPay):"0"}</td></tr>
+    </table>
+
+    <table style="margin-bottom:4px">
+      <tr><td class="side" rowspan="5" style="width:16px">Ⅲ세액명세</td>
+        <td class="lbl ctr">구 분</td><td class="lbl ctr">79 소득세</td><td class="lbl ctr">80 지방소득세</td><td class="lbl ctr">81 농어촌특별세</td></tr>
+      <tr><td class="lbl">73 결정세액</td><td class="r">${zero(r.decidedTax)}</td><td class="r">${zero(r.decidedLocalTax)}</td><td class="r">0</td></tr>
+      <tr><td class="lbl">74 종(전)근무지(기납부)</td><td class="r">0</td><td class="r">0</td><td class="r">0</td></tr>
+      <tr><td class="lbl">75 주(현)근무지(기납부)</td><td class="r">${zero(r.p.totalIT)}</td><td class="r">${zero(r.p.totalLT)}</td><td class="r">0</td></tr>
+      <tr><td class="lbl">77 차감징수세액(73-74-75-76)</td><td class="r">${r.refund>=0?"-":""}${zero(Math.abs(r.refund))}</td><td class="r">${r.refundLocal>=0?"-":""}${zero(Math.abs(r.refundLocal))}</td><td class="r">0</td></tr>
+    </table>
+    <div class="foot">※ 소득세ㆍ지방소득세가 음수(-)이면 환급, 양수이면 추가납부입니다.</div>
+
+    <div style="text-align:center;margin-top:16px;font-size:11px">위의 원천징수액(근로소득)을 정히 영수(지급)합니다.</div>
+    <div style="text-align:right;margin-top:6px;font-size:11px">${new Date().getFullYear()} 년 ${new Date().getMonth()+1} 월 ${new Date().getDate()} 일</div>
+    <div style="text-align:right;margin-top:6px;font-size:11px">징수(보고)의무자 &nbsp; ${esc(companyNameGuess()||"—")} (서명 또는 인)</div>
+    <div style="text-align:right;margin-top:20px;font-size:11px">세 무 서 장 귀하</div>
+  </div>
+
+  <!-- ══════════ 2쪽 (Ⅳ 정산명세 — 좌우 2단) ══════════ -->
+  <div class="page">
+    <div class="pagenum">(3쪽 중 제2쪽)</div>
+    <table>
+      <tr><td class="lbl" colspan="2" style="width:52%">21 총급여(16, 다만 외국인단일세율 적용시 연간근로소득)</td><td class="r" style="width:48%">${zero(grossPay)}</td>
+        <td class="lbl">49 산 출 세 액</td><td class="r">${zero(r.calcTax)}</td></tr>
+      <tr><td class="lbl" colspan="2">22 근로소득공제</td><td class="r">${zero(r.earnedDeduction)}</td>
+        <td class="lbl" rowspan="4">세<br>액<br>감<br>면</td><td></td></tr>
+      <tr><td class="lbl" colspan="2">23 근로소득금액</td><td class="r">${zero(r.earnedIncome)}</td><td class="r">50「소득세법」 0</td></tr>
+      <tr><td class="lbl" rowspan="3">기본<br>공제</td><td class="lbl">24 본 인</td><td class="r">1,500,000</td><td class="r">51「조특법」(52제외) 0</td></tr>
+      <tr><td class="lbl">25 배우자</td><td class="r">${zero(spouseCnt*1500000)}</td><td class="r">52「조특법」제30조 ${zero(r.sme.creditAmount)}</td></tr>
+      <tr><td class="lbl">26 부양가족(${otherDepCnt}명)</td><td class="r">${zero(otherDepCnt*1500000)}</td><td class="lbl">53 조세조약</td><td class="r">0</td></tr>
+      <tr><td class="lbl" rowspan="4">추가<br>공제</td><td class="lbl">27 경로우대(${r.dep.elderly}명)</td><td class="r">${zero(r.dep.elderly*1000000)}</td><td class="lbl">54 세액감면계</td><td class="r" style="font-weight:800">${zero(r.sme.creditAmount)}</td></tr>
+      <tr><td class="lbl">28 장애인(${r.dep.disabled}명)</td><td class="r">${zero(r.dep.disabled*2000000)}</td><td class="lbl" rowspan="14">세<br>액<br>공<br>제</td><td class="r">55 근로소득 ${zero(r.earnedCredit)}</td></tr>
+      <tr><td class="lbl">29 부녀자</td><td class="r">0</td><td class="r">56 결혼세액공제 0</td></tr>
+      <tr><td class="lbl">30 한부모가족</td><td class="r">0</td><td class="r">57 자녀(${r.dep.child8plus}명) ${zero(r.childCredit)}</td></tr>
+      <tr><td class="lbl" rowspan="2">연금<br>보험료<br>공제</td><td class="lbl">31 국민연금보험료</td><td class="r">${zero(r.pensionDeduction)}</td><td class="r">58~59 공적연금 퇴직연금 0</td></tr>
+      <tr><td class="lbl">32 공적연금보험료공제</td><td class="r">0</td><td class="r">60 연금저축 ${zero(r.pensionCredit)}</td></tr>
+      <tr><td class="lbl" rowspan="2">특별<br>소득<br>공제</td><td class="lbl">33 보험료(건강ㆍ고용)${r.useStandard&&!isLeaver?" [미적용]":""}</td><td class="r">${zero(r.specialDeduction)}</td><td class="r">60-1 ISA만기 연금계좌납입 0</td></tr>
+      <tr><td class="lbl">34 주택자금</td><td class="r">0</td><td class="r">61 보험료(보장성) ${zero(r.useStandard?0:r.insCredit)}</td></tr>
+      <tr><td class="lbl" colspan="2">35 계</td><td class="r">${zero(r.personalDeduction+r.pensionDeduction+r.specialDeduction)}</td><td class="r">62 의료비 ${zero(r.useStandard?0:r.medicalCredit)}</td></tr>
+      <tr><td class="lbl" colspan="2" style="font-weight:800">36 차감소득금액</td><td class="r" style="font-weight:800">${zero(r.earnedIncome-r.personalDeduction-r.pensionDeduction-r.specialDeduction)}</td><td class="r">63 교육비 ${zero(r.useStandard?0:r.educationCredit)}</td></tr>
+      <tr><td class="lbl" rowspan="10">그밖의<br>소득<br>공제</td><td class="lbl">37 개인연금저축</td><td class="r">0</td><td class="r">64 기부금 ${zero(r.useStandard?0:r.donationCredit)}</td></tr>
+      <tr><td class="lbl">38 소기업ㆍ소상공인공제부금</td><td class="r">0</td><td class="r">65 계 ${zero(r.useStandard?0:r.itemizedCredit)}</td></tr>
+      <tr><td class="lbl">39 주택마련저축소득공제</td><td class="r">0</td><td class="lbl">66 표준세액공제</td><td class="r">${zero(r.useStandard?130000:0)}</td></tr>
+      <tr><td class="lbl">40 투자조합출자 등</td><td class="r">0</td><td class="lbl">67 납세조합공제</td><td class="r">0</td></tr>
+      <tr><td class="lbl">41 신용카드 등 사용액</td><td class="r">0</td><td class="lbl">68 주택차입금</td><td class="r">0</td></tr>
+      <tr><td class="lbl">42 우리사주조합 출연금</td><td class="r">0</td><td class="lbl">69 외국납부</td><td class="r">0</td></tr>
+      <tr><td class="lbl">43 고용유지 중소기업 근로자</td><td class="r">0</td><td class="lbl">70 월세액</td><td class="r">0</td></tr>
+      <tr><td class="lbl">44 장기집합투자증권저축</td><td class="r">0</td><td class="lbl" style="font-weight:800">71 세액공제 계</td><td class="r" style="font-weight:800">${zero(r.totalCredit)}</td></tr>
+      <tr><td class="lbl">45 청년형 장기집합투자증권저축</td><td class="r">0</td><td class="lbl" style="font-weight:800;font-size:12px">72 결정세액(49-54-71)</td><td class="r" style="font-weight:800;font-size:12px">${zero(r.decidedTax)}</td></tr>
+      <tr><td class="lbl">46 그 밖의 소득공제 계</td><td class="r">0</td><td class="lbl">82 실효세율(%)(72/21)×100</td><td class="r">${grossPay>0?(r.decidedTax/grossPay*100).toFixed(1):"0.0"}</td></tr>
+      <tr><td class="lbl" colspan="2">47 소득공제 종합한도 초과액</td><td class="r">0</td><td colspan="2"></td></tr>
+      <tr><td class="lbl" colspan="2" style="font-weight:800">48 종합소득 과세표준</td><td class="r" style="font-weight:800">${zero(r.taxBase)}</td><td colspan="2"></td></tr>
+    </table>
+    <div class="foot">⚠ 공적연금(공무원ㆍ군인ㆍ사학ㆍ별정우체국)ㆍ주택자금ㆍ신용카드 등 사용액ㆍ부녀자ㆍ한부모ㆍISAㆍ정치자금 등 세부 기부금 항목은 판정에 필요한 자료를 수집하지 않아 0으로 표시했습니다.</div>
+  </div>
+
+  <!-- ══════════ 3쪽 (78 소득ㆍ세액공제 명세) ══════════ -->
+  <div class="page">
+    <div class="pagenum">(3쪽 중 제3쪽)</div>
+    <div class="sec-h">78 소득ㆍ세액공제 명세(인적공제항목은 해당란에 "○"표시를 하며, 각종 소득ㆍ세액공제 항목은 실제 지출한 금액을 적습니다)</div>
+    <table style="font-size:9px">
+      <tr><td class="lbl ctr" rowspan="2">관계<br>코드</td><td class="lbl ctr" rowspan="2">성 명</td>
+        <td class="lbl ctr" colspan="2">기본<br>공제</td><td class="lbl ctr">경로<br>우대</td><td class="lbl ctr">출산<br>입양</td><td class="lbl ctr">장애<br>인</td><td class="lbl ctr" rowspan="2">자료<br>구분</td>
+        <td class="lbl ctr" colspan="2">보험료</td><td class="lbl ctr" colspan="2">의료비</td><td class="lbl ctr" colspan="2">교육비</td></tr>
+      <tr><td class="lbl ctr">내ㆍ외국인</td><td class="lbl ctr">부녀자/한부모</td><td class="lbl ctr"></td><td class="lbl ctr"></td><td class="lbl ctr"></td>
+        <td class="lbl ctr">건강ㆍ고용</td><td class="lbl ctr">보장성</td><td class="lbl ctr">일반</td><td class="lbl ctr">65세ㆍ장애인</td><td class="lbl ctr">일반</td><td class="lbl ctr">장애인특수</td></tr>
+      ${persRows.map((p,i)=>`<tr>
+        <td class="ctr">${p.self?"0":esc(p.relation)}</td><td>${esc(p.name)}</td>
+        <td class="ctr">${p.self?"○":"○"}</td><td class="ctr">1</td><td class="ctr">${!p.self&&p.age>=70?"○":""}</td><td class="ctr"></td><td class="ctr">${p.disabled?"1":""}</td>
+        <td class="ctr">국세청</td>
+        <td class="r">${p.self?zero(r.p.totalNP?r.p.totalHIEI:0):""}</td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td>
+      </tr>`).join("")}
+    </table>
+
+    <div class="sec-h" style="margin-top:14px">각종 소득공제ㆍ세액공제 항목 — 신용카드 등 사용액공제 / 기부금</div>
+    <table style="font-size:9px">
+      <tr><td class="lbl ctr" rowspan="2">자료<br>구분</td><td class="lbl ctr" colspan="3">신용카드 등 사용액</td><td class="lbl ctr" rowspan="2">전통시장</td><td class="lbl ctr" rowspan="2">대중교통</td><td class="lbl ctr" rowspan="2">기부금</td></tr>
+      <tr><td class="lbl ctr">신용카드</td><td class="lbl ctr">직불카드 등</td><td class="lbl ctr">현금영수증</td></tr>
+      <tr><td class="ctr">국세청</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td></tr>
+      <tr><td class="ctr">기타</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td><td class="r">0</td></tr>
+    </table>
+    <div class="foot">⚠ 위 3쪽 표는 서식 구조만 반영했습니다. 신용카드ㆍ의료비ㆍ교육비 등 세부 지출 데이터는 이 시스템에서 수집하지 않아 0으로 표시됩니다. 실제 신고 시 홈택스 연말정산 간소화 자료로 채워주세요.</div>
+  </div>
+
+  </body></html>`);
+  w.document.close();
 }
 
 /* 5) 원천징수이행상황신고서 (근로소득 부분만 자동 계산 — 그 외 소득종류는 수기 작성) */
+
+
+/* 5) 원천징수이행상황신고서 (근로소득 부분만 자동 계산 — 그 외 소득종류는 수기 작성) */
 function openWithholdingReport(){
-  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId);
-  const target = run || [...PAYROLL_RUNS].sort((a,b)=>b.yearMonth.localeCompare(a.yearMonth))[0];
-  if(!target){ alert("급여 작업이 없습니다. 먼저 급여 작업을 만들어주세요."); return; }
-  const year=target.yearMonth.slice(0,4);
+  pickPayrollRun(target=>{
+    const year=target.yearMonth.slice(0,4);
 
-  // A01 간이세액: 계속근무자 / A02 중도퇴사: 이 달이 퇴사월인 사람
-  const leaverIds=new Set(target.rows.filter(r=>{
-    const e=findEmp(r.empId); if(!e||!e.leaveDate) return false;
-    const ld=parseYmd(e.leaveDate); if(!ld) return false;
-    return `${ld.getFullYear()}-${String(ld.getMonth()+1).padStart(2,"0")}`===target.yearMonth;
-  }).map(r=>r.empId));
-  const contRows=target.rows.filter(r=>!leaverIds.has(r.empId));
-  const leaveRows=target.rows.filter(r=>leaverIds.has(r.empId));
+    // A01 간이세액: 계속근무자 / A02 중도퇴사: 이 달이 퇴사월인 사람
+    const leaverIds=new Set(target.rows.filter(r=>{
+      const e=findEmp(r.empId); if(!e||!e.leaveDate) return false;
+      const ld=parseYmd(e.leaveDate); if(!ld) return false;
+      return `${ld.getFullYear()}-${String(ld.getMonth()+1).padStart(2,"0")}`===target.yearMonth;
+    }).map(r=>r.empId));
+    const contRows=target.rows.filter(r=>!leaverIds.has(r.empId));
+    const leaveRows=target.rows.filter(r=>leaverIds.has(r.empId));
 
-  const a01Count=contRows.length;
-  const a01Pay=contRows.reduce((s,r)=>s+rowPayTotal(r),0);
-  const a01Tax=contRows.reduce((s,r)=>s+r.deduct["소득세"].v,0);
+    const a01Count=contRows.length;
+    const a01Pay=contRows.reduce((s,r)=>s+rowPayTotal(r),0);
+    const a01Tax=contRows.reduce((s,r)=>s+r.deduct["소득세"].v,0);
 
-  // A02 중도퇴사: 이 달 퇴사자의 '연간 누계 총급여'와 '결정세액'(연말정산 확정 세액 그 자체) — 조정액이 아님
-  const a02List=leaveRows.map(r=>{ const e=findEmp(r.empId); const y=calcYearEndSettlement(e, year, true); return {name:r.name, pay:y.p.totalPay, tax:y.decidedTax}; });
-  const a02Count=a02List.length;
-  const a02Pay=a02List.reduce((s,x)=>s+x.pay,0);
-  const a02Tax=a02List.reduce((s,x)=>s+x.tax,0);
+    // A02 중도퇴사: 이 달 퇴사자의 '연간 누계 총급여'와 '결정세액'(연말정산 확정 세액 그 자체) — 조정액이 아님
+    const a02List=leaveRows.map(r=>{ const e=findEmp(r.empId); const y=calcYearEndSettlement(e, year, true); return {name:r.name, pay:y.p.totalPay, tax:y.decidedTax}; });
+    const a02Count=a02List.length;
+    const a02Pay=a02List.reduce((s,x)=>s+x.pay,0);
+    const a02Tax=a02List.reduce((s,x)=>s+x.tax,0);
 
-  const a10Count=a01Count+a02Count, a10Pay=a01Pay+a02Pay, a10Tax=a01Tax+a02Tax;
+    const a10Count=a01Count+a02Count, a10Pay=a01Pay+a02Pay, a10Tax=a01Tax+a02Tax;
 
-  const rowHtml=(label,code,cnt,pay,tax,note)=>`<tr><td class="lbl">${label}</td><td class="ctr">${code}</td><td class="ctr">${cnt||"&nbsp;"}</td>
-    <td>${pay!=null?pay.toLocaleString("ko-KR"):"&nbsp;"}</td><td>${tax!=null?tax.toLocaleString("ko-KR"):"&nbsp;"}</td>
-    <td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>${tax!=null?tax.toLocaleString("ko-KR"):"&nbsp;"}</td><td>&nbsp;</td>${note?`<td style="text-align:left;font-size:9.5px;color:#888">${note}</td>`:"<td></td>"}</tr>`;
+    const rowHtml=(label,code,cnt,pay,tax,note)=>`<tr><td class="lbl">${label}</td><td class="ctr">${code}</td><td class="ctr">${cnt||"&nbsp;"}</td>
+      <td>${pay!=null?pay.toLocaleString("ko-KR"):"&nbsp;"}</td><td>${tax!=null?tax.toLocaleString("ko-KR"):"&nbsp;"}</td>
+      <td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>${tax!=null?tax.toLocaleString("ko-KR"):"&nbsp;"}</td><td>&nbsp;</td>${note?`<td style="text-align:left;font-size:9.5px;color:#888">${note}</td>`:"<td></td>"}</tr>`;
 
-  const html=`<h1>원 천 징 수 이 행 상 황 신 고 서</h1>
-  <div class="sub">${esc(companyNameGuess()||"—")} · 귀속연월 ${esc(target.yearMonth)} · 지급연월 ${esc(target.yearMonth)} · 매월신고 · 정기신고</div>
-  <table><thead><tr><th rowspan="2">구분</th><th rowspan="2">Code</th><th colspan="2">소득지급(과세미달,비과세포함)</th><th colspan="3">징수세액</th><th rowspan="2">9.당월조정<br>환급세액</th><th colspan="2">납부세액</th><th rowspan="2">비고</th></tr>
-  <tr><th>4.인원</th><th>5.총지급액</th><th>6.소득세 등</th><th>7.농어촌특별세</th><th>8.가산세</th><th>10.소득세 등<br>(가산세 포함)</th><th>11.농어촌특별세</th></tr></thead>
-  <tbody>
-    ${rowHtml("간이세액","A01",a01Count,a01Pay,a01Tax)}
-    ${rowHtml("중도퇴사","A02",a02Count,a02Pay,a02Tax,a02List.length?a02List.map(x=>x.name).join(", "):"")}
-    ${rowHtml("일용근로","A03",null,null,null)}
-    ${rowHtml("연말정산","A04",null,null,null,"계속근무자 2월 정산분 — 필요 시 수기 작성")}
-    ${rowHtml("　(분납신청)","A05",null,null,null)}
-    ${rowHtml("　(납부금액)","A06",null,null,null)}
-    <tr style="background:#F3EAE3;font-weight:800"><td class="lbl">가감계</td><td class="ctr">A10</td><td class="ctr">${a10Count}</td>
-      <td>${a10Pay.toLocaleString("ko-KR")}</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td></td></tr>
-    ${rowHtml("퇴직소득 가감계","A20",null,null,null)}
-    ${rowHtml("사업소득","A25",null,null,null)}
-    ${rowHtml("기타소득","A40",null,null,null)}
-    ${rowHtml("연금소득","A41",null,null,null)}
-    ${rowHtml("이자소득","A50",null,null,null)}
-    ${rowHtml("배당소득","A60",null,null,null)}
-    ${rowHtml("저축해지 추징세액 등","A69",null,null,null)}
-    ${rowHtml("비거주자 양도소득","A70",null,null,null)}
-    ${rowHtml("법인원천","A80",null,null,null)}
-    ${rowHtml("수정신고(세액)","A90",null,null,null)}
-    <tr style="background:#F0E6DD;font-weight:800"><td class="lbl">총 합 계</td><td class="ctr">A99</td><td class="ctr">${a10Count}</td>
-      <td>${a10Pay.toLocaleString("ko-KR")}</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td></td></tr>
-  </tbody></table>
+    const html=`<h1>원 천 징 수 이 행 상 황 신 고 서</h1>
+    <div class="sub">${esc(companyNameGuess()||"—")} · 귀속연월 ${esc(target.yearMonth)} · 지급연월 ${esc(target.yearMonth)} · 매월신고 · 정기신고</div>
+    <table><thead><tr><th rowspan="2">구분</th><th rowspan="2">Code</th><th colspan="2">소득지급(과세미달,비과세포함)</th><th colspan="3">징수세액</th><th rowspan="2">9.당월조정<br>환급세액</th><th colspan="2">납부세액</th><th rowspan="2">비고</th></tr>
+    <tr><th>4.인원</th><th>5.총지급액</th><th>6.소득세 등</th><th>7.농어촌특별세</th><th>8.가산세</th><th>10.소득세 등<br>(가산세 포함)</th><th>11.농어촌특별세</th></tr></thead>
+    <tbody>
+      ${rowHtml("간이세액","A01",a01Count,a01Pay,a01Tax)}
+      ${rowHtml("중도퇴사","A02",a02Count,a02Pay,a02Tax,a02List.length?a02List.map(x=>x.name).join(", "):"")}
+      ${rowHtml("일용근로","A03",null,null,null)}
+      ${rowHtml("연말정산","A04",null,null,null,"계속근무자 2월 정산분 — 필요 시 수기 작성")}
+      ${rowHtml("　(분납신청)","A05",null,null,null)}
+      ${rowHtml("　(납부금액)","A06",null,null,null)}
+      <tr style="background:#F3EAE3;font-weight:800"><td class="lbl">가감계</td><td class="ctr">A10</td><td class="ctr">${a10Count}</td>
+        <td>${a10Pay.toLocaleString("ko-KR")}</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td></td></tr>
+      ${rowHtml("퇴직소득 가감계","A20",null,null,null)}
+      ${rowHtml("사업소득","A25",null,null,null)}
+      ${rowHtml("기타소득","A40",null,null,null)}
+      ${rowHtml("연금소득","A41",null,null,null)}
+      ${rowHtml("이자소득","A50",null,null,null)}
+      ${rowHtml("배당소득","A60",null,null,null)}
+      ${rowHtml("저축해지 추징세액 등","A69",null,null,null)}
+      ${rowHtml("비거주자 양도소득","A70",null,null,null)}
+      ${rowHtml("법인원천","A80",null,null,null)}
+      ${rowHtml("수정신고(세액)","A90",null,null,null)}
+      <tr style="background:#F0E6DD;font-weight:800"><td class="lbl">총 합 계</td><td class="ctr">A99</td><td class="ctr">${a10Count}</td>
+        <td>${a10Pay.toLocaleString("ko-KR")}</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>${a10Tax.toLocaleString("ko-KR")}</td><td>&nbsp;</td><td></td></tr>
+    </tbody></table>
 
-  <h3 style="font-size:12px;margin:16px 0 6px">환급세액 조정명세</h3>
-  <table><thead><tr><th colspan="3">전월 미환급 세액의 계산</th><th colspan="4">당월 발생 환급세액</th><th>18.조정대상<br>환급세액<br>(14+15+16+17)</th><th>19.당월조정<br>환급세액계</th><th>20.차월이월<br>환급세액(18-19)</th><th>21.환급신청액</th></tr>
-  <tr><th>12.전월미환급</th><th>13.기환급신청</th><th>14.잔액(12-13)</th><th>15.일반환급</th><th>16.신탁재산</th><th>17.금융회사 등</th><th>17.합병 등</th><th></th><th></th><th></th><th></th></tr></thead>
-  <tbody><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table>
+    <h3 style="font-size:12px;margin:16px 0 6px">환급세액 조정명세</h3>
+    <table><thead><tr><th colspan="3">전월 미환급 세액의 계산</th><th colspan="4">당월 발생 환급세액</th><th>18.조정대상<br>환급세액<br>(14+15+16+17)</th><th>19.당월조정<br>환급세액계</th><th>20.차월이월<br>환급세액(18-19)</th><th>21.환급신청액</th></tr>
+    <tr><th>12.전월미환급</th><th>13.기환급신청</th><th>14.잔액(12-13)</th><th>15.일반환급</th><th>16.신탁재산</th><th>17.금융회사 등</th><th>17.합병 등</th><th></th><th></th><th></th><th></th></tr></thead>
+    <tbody><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>0</td><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table>
 
-  <div class="sub" style="margin-top:14px;text-align:left;line-height:1.7">
-  ⚠ <b>간이세액(A01)</b>·<b>중도퇴사(A02)</b>는 급여관리 데이터로 자동 계산되었습니다.<br>
-  · A01(간이세액): 이 달 계속근무자의 급여·소득세 합계<br>
-  · A02(중도퇴사): 이 달 퇴사자의 연간 누계 총급여와 <b>연말정산 결정세액</b>(급여명세서에 반영된 조정액이 아닌 확정세액 자체) — 국세상담센터 작성기준에 따름<br>
-  · 연말정산(A04~A06)·퇴직·사업·기타·이자·배당·법인원천 소득 및 하단 환급세액 조정명세는 해당 지급 내역이 있는 경우 수기로 작성해주세요.</div>`;
-  openReportWindow(`원천징수이행상황신고서_${target.yearMonth}`, html);
+    <div class="sub" style="margin-top:14px;text-align:left;line-height:1.7">
+    ⚠ <b>간이세액(A01)</b>·<b>중도퇴사(A02)</b>는 급여관리 데이터로 자동 계산되었습니다.<br>
+    · A01(간이세액): 이 달 계속근무자의 급여·소득세 합계<br>
+    · A02(중도퇴사): 이 달 퇴사자의 연간 누계 총급여와 <b>연말정산 결정세액</b>(급여명세서에 반영된 조정액이 아닌 확정세액 자체) — 국세상담센터 작성기준에 따름<br>
+    · 연말정산(A04~A06)·퇴직·사업·기타·이자·배당·법인원천 소득 및 하단 환급세액 조정명세는 해당 지급 내역이 있는 경우 수기로 작성해주세요.</div>`;
+    openReportWindow(`원천징수이행상황신고서_${target.yearMonth}`, html);
+  });
 }
 
 
@@ -4043,7 +4538,7 @@ function openEmp(id, panel){
 }
 function closeEmpDetail(){
   openEmpId=null; document.getElementById("empDetail").classList.remove("show");
-  renderEmployees(); renderContractList(); renderLaborList();
+  renderEmployees(); renderContractList();
 }
 function toggleEmpEdit(){ empEdit=!empEdit; renderEmpDetail(); }
 function edTab(p){ edPanel=p; renderEmpDetail(); }
@@ -4064,7 +4559,8 @@ function renderEmpDetail(){
   const body=document.getElementById("edBody");
   if(edPanel==="record") body.innerHTML=renderRecordCard(e);
   else if(edPanel==="contract") body.innerHTML=renderContract(e);
-  else body.innerHTML=renderLabor(e);
+  else if(edPanel==="labor") body.innerHTML=renderLabor(e);
+  else body.innerHTML=renderResumeTab(e);
 }
 
 const D=(on)=>on?"":"disabled";   // 편집 아니면 disabled
@@ -4249,20 +4745,18 @@ function renderRecordCard(e){
     ${docRows}
   </div>
 
-  ${renderRecruitSection(e)}
-
   ${on?"":`<div style="text-align:center;padding:8px 0 20px"><button class="btn danger" onclick="deleteEmp()">🗑 이 임직원 삭제 (되돌릴 수 없음)</button></div>`}
   `;
 }
 
-/* ── 인사기록카드: 면접 전형 결과 ── */
-function renderRecruitSection(e){
+/* ── 임직원 상세: 이력서 탭 (입사 당시 원본 이력서 + 면접 평가 히스토리) ── */
+function renderResumeTab(e){
   const r=freshRecruitInfo(e);
-  if(!r || (e.source!=="ats" && !e.recruitInfo)) {
-    // ATS 전환자가 아니면 표시하지 않음
-    if(e.source!=="ats") return "";
+  if(!r || e.source!=="ats"){
+    return `<div class="rc-sec"><h3>이력서</h3>
+      <div style="font-size:12.5px;color:var(--faint);padding:16px 4px">이 임직원은 ATS(채용관리)를 거치지 않고 직접 등록되어, 입사 당시 이력서·면접 기록이 없습니다.</div>
+    </div>`;
   }
-  if(!r) return "";
   const ev=r.itvEval;
   const evalLogRows=(r.evalLog||[]).map(l=>`
     <tr><td class="lbl2" style="white-space:nowrap">${esc(l.by||"미상")}</td>
@@ -4274,8 +4768,22 @@ function renderRecruitSection(e){
       <div style="font-size:12px;color:var(--muted);line-height:1.5">${esc(q.a||"(답변 미기록)")}</div>
       ${q.by?`<div style="font-size:10.5px;color:var(--faint);margin-top:4px">질문자: ${esc(q.by)}</div>`:""}
     </div>`).join("");
+  const hlList=(r.hl||[]).filter(Boolean);
 
   return `
+  <div class="rc-sec"><h3>📄 입사 당시 제출 이력서</h3>
+    ${r.fileData?`
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button class="btn" onclick="viewSnapshotResume(${e.id})">👁 이력서 보기</button>
+        <span style="font-size:12px;color:var(--faint)">${esc(r.fileName||"resume")}</span>
+      </div>`
+      : `<div style="font-size:12.5px;color:var(--faint)">저장된 원본 이력서 파일이 없습니다.</div>`}
+    ${hlList.length?`<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:6px">이력서 AI 분석 하이라이트</div>
+      <ul style="margin:0;padding-left:18px;font-size:12.5px;color:var(--muted);line-height:1.7">${hlList.map(h=>`<li>${esc(h)}</li>`).join("")}</ul></div>`:""}
+    ${r.memo?`<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:6px">채용 담당자 메모</div>
+      <div style="font-size:12.5px;color:var(--muted);line-height:1.6;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px">${esc(r.memo)}</div></div>`:""}
+  </div>
+
   <div class="rc-sec"><h3>채용·면접 전형 결과 <span class="badge">ATS 연계</span></h3>
     <div class="fg c3" style="margin-bottom:14px">
       <div class="fld"><label>지원 공고</label><div class="ro">${esc(r.jobTitle||"—")}</div></div>
@@ -4297,6 +4805,13 @@ function renderRecruitSection(e){
       <div style="font-size:12px;color:var(--muted);line-height:1.6;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;max-height:160px;overflow-y:auto;white-space:pre-wrap">${esc(r.transcript)}</div>`:""}
   </div>`;
 }
+function viewSnapshotResume(empId){
+  const e=findEmp(empId); if(!e) return;
+  const r=freshRecruitInfo(e); if(!r||!r.fileData) return;
+  const b=resumeBlob(r);
+  if(!b){ alert("이력서 파일을 열 수 없습니다."); return; }
+  window.open(b.url, "_blank");
+}
 
 /* ── 패널 2: 근로계약 (근로기준법 제17조 · 첨부 계약서 기준) ── */
 function migrateContract(e){
@@ -4316,9 +4831,10 @@ function migrateContract(e){
     ];
     c.wageItems=legacy.some(w=>w.amount) ? legacy : [];
   }
-  if(c.empName===undefined) c.empName="";
-  if(c.empCeo===undefined) c.empCeo="";
-  if(c.empAddr===undefined) c.empAddr="";
+  // 사업자정보(유지 > 사업자정보)에 등록된 값이 있으면 신규 계약에 자동 채움(수기 입력한 값은 덮어쓰지 않음)
+  if(c.empName===undefined || c.empName==="") c.empName=(COMPANY_INFO&&COMPANY_INFO.name)||"";
+  if(c.empCeo===undefined || c.empCeo==="") c.empCeo=(COMPANY_INFO&&COMPANY_INFO.ceoName)||"";
+  if(c.empAddr===undefined || c.empAddr==="") c.empAddr=(COMPANY_INFO&&COMPANY_INFO.addr)||"";
   if(c.probation===undefined) c.probation="3개월";
   if(c.salaryPeriodStart===undefined) c.salaryPeriodStart="";
   if(c.salaryPeriodEnd===undefined) c.salaryPeriodEnd="";
