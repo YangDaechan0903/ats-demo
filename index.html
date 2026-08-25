@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>채용 파이프라인 · ATS 데모</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#F6F1EC;--surface:#FFFCF9;--ink:#3B2419;--muted:#6F5648;--faint:#A0897A;
@@ -984,6 +985,10 @@
             <label style="font-size:12px;font-weight:700;color:var(--muted)">지급일</label>
             <input id="prPayDateInput" type="date" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="updateRunPayDate(this.value)">
             <span style="flex:1"></span>
+            <button class="btn ghost" onclick="downloadExcelBlank()">📄 빈 양식 다운로드</button>
+            <button class="btn ghost" onclick="downloadExcelTemplate()">📥 현재 작업 데이터 다운로드</button>
+            <button class="btn ghost" onclick="openExcelUploadModal()">📤 엑셀 업로드</button>
+            <input type="file" id="excelUploadInput" accept=".xlsx,.xls" style="display:none" onchange="handleExcelFile(this.files[0])">
             <button class="btn ghost" onclick="openPayslipBatch()">📧 급여명세서 발송</button>
             <button class="btn ghost" onclick="applyLeaverSettlementBulk()">🧮 중도퇴사자 소득세 간편반영</button>
             <button class="btn ghost" onclick="openWageLedger()">🖨 임금대장</button>
@@ -3613,6 +3618,180 @@ function updateRunPayDate(newDate){
 /* ── 지급일별 급여명세서 발송 ──
    이 급여작업 안에 존재하는 지급일들(정기 지급일 + 추가항목별 다른 지급일)을 모아 보여주고,
    선택한 날짜에 해당하는 사람들의 급여명세서를 한번에 인쇄창으로 생성한다. */
+/* ═══════════════════════ 엑셀 업로드(더존 양식 호환) ═══════════════════════
+   작업순서: 1)오프라인 엑셀작업 2)e-hris에 급여작업(귀속월·지급일) 먼저 등록
+   3)엑셀 업로드해서 사번 또는 주민번호로 매칭 4)검증 후 반영
+   컬럼 구성(0-index): 0사원코드 1사원명 2주민등록번호 3부서 4직급 5직종
+   6~22 급여항목17종, 23지급액계, 24~37 공제항목14종, 38공제액계, 39차인지급액 (총 40열) */
+const EXCEL_META_COLS=["사원코드","사원명","주민등록번호","부서","직급","직종"]; // A~F
+function buildExcelHeader(){
+  const header1=new Array(40).fill("");
+  header1[0]="사원코드"; header1[6]="수당"; header1[24]="공제"; header1[39]="차인지급액";
+  const header2=new Array(40).fill("");
+  header2[1]="사원명"; header2[2]="주민등록번호"; header2[3]="부서"; header2[4]="직급"; header2[5]="직종";
+  PAY_COLUMNS.forEach((k,i)=>header2[6+i]=k);
+  header2[23]="지급액계";
+  DEDUCT_COLUMNS.forEach((k,i)=>header2[24+i]=k);
+  header2[38]="공제액계";
+  return [header1, header2];
+}
+function buildExcelRows(run, blank){
+  const rows=buildExcelHeader();
+  run.rows.forEach(row=>{
+    const e=findEmp(row.empId);
+    const line=new Array(40).fill(0);
+    line[0]=row.empId; line[1]=row.name; line[2]=(e&&e.rrn)||""; line[3]=row.dept||""; line[4]=row.position||""; line[5]=(e&&e.jobType)||"";
+    if(!blank){
+      PAY_COLUMNS.forEach((k,i)=>line[6+i]=row.pay[k].v);
+      line[23]=rowPayTotal(row);
+      DEDUCT_COLUMNS.forEach((k,i)=>line[24+i]=row.deduct[k].v);
+      line[38]=rowDeductTotal(row);
+      line[39]=rowPayTotal(row)-rowDeductTotal(row);
+    }
+    rows.push(line);
+  });
+  return rows;
+}
+function writeExcelFile(rows, filename){
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws["!merges"]=[{s:{r:0,c:6},e:{r:0,c:22}}, {s:{r:0,c:24},e:{r:0,c:37}}];
+  ws["!cols"]=[{wch:9},{wch:10},{wch:14}].concat(new Array(37).fill({wch:11}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  XLSX.writeFile(wb, filename);
+}
+function downloadExcelBlank(){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
+  writeExcelFile(buildExcelRows(run, true), `급여빈양식_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
+}
+function downloadExcelTemplate(){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
+  writeExcelFile(buildExcelRows(run, false), `급여작업데이터_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
+}
+
+let excelUploadMatchBy="code"; // 'code'(사번) | 'rrn'(주민번호)
+function openExcelUploadModal(){
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  document.getElementById("pdName").textContent="엑셀 업로드";
+  document.getElementById("pdMeta").textContent=`${run.yearMonth} · ${run.category||"급여"} 작업에 반영합니다`;
+  document.getElementById("pdBody").innerHTML=`
+    <div style="font-size:11px;color:var(--faint);line-height:1.7;margin-bottom:14px;padding:10px 12px;background:var(--bg);border-radius:8px">
+      <b>작업 순서</b>: ① 오프라인에서 엑셀 작업 완성 → ② e-HRIS에 급여작업(귀속월·지급일)을 미리 만들어둠(완료) → ③ 지금처럼 엑셀 업로드해서 매칭 → ④ 아래 검증 결과를 확인 후 반영<br>
+      💡 "빈 양식 다운로드"로 재직자 명단(사번·주민번호·부서·직급)을 받아 채우거나, "현재 작업 데이터 다운로드"로 이미 계산된 값을 받아 수정한 뒤 업로드하세요.
+    </div>
+    <div style="font-size:12px;font-weight:800;margin-bottom:8px">1. 매칭 기준 선택</div>
+    <div style="display:flex;gap:16px;margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="radio" name="excelMatchBy" value="code" checked onchange="excelUploadMatchBy=this.value"> 사원코드(사번)</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px"><input type="radio" name="excelMatchBy" value="rrn" onchange="excelUploadMatchBy=this.value"> 주민등록번호</label>
+    </div>
+    <div style="font-size:11px;color:var(--faint);line-height:1.6;margin-bottom:14px">
+      더존 등에서 쓰는 것과 같은 급여 항목 구성(A~F 사원정보, G~W 급여항목 17종, Y~AL 공제항목 14종)의 엑셀을 업로드하면,
+      선택하신 기준(사번 또는 주민번호)으로 이 급여작업의 임직원과 매칭한 뒤, 매칭 결과를 먼저 검증 화면으로 보여드립니다.
+      확인 후 "반영" 버튼을 눌러야 실제로 적용됩니다.
+    </div>
+    <button class="btn" style="width:100%;justify-content:center" onclick="document.getElementById('excelUploadInput').click()">📁 엑셀 파일 선택</button>
+  `;
+  document.getElementById("payrollDetailOverlay").classList.add("show");
+}
+function handleExcelFile(file){
+  if(!file) return;
+  const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
+  const reader=new FileReader();
+  reader.onload=(ev)=>{
+    let wb;
+    try{ wb=XLSX.read(ev.target.result, {type:"array"}); }
+    catch(err){ alert("엑셀 파일을 읽을 수 없습니다: "+err.message); return; }
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const aoa=XLSX.utils.sheet_to_json(ws, {header:1, defval:0});
+    validateAndPreviewExcel(aoa, run);
+  };
+  reader.onerror=()=>alert("파일을 읽는 중 오류가 발생했습니다.");
+  reader.readAsArrayBuffer(file);
+  document.getElementById("excelUploadInput").value=""; // 같은 파일 재업로드 가능하도록
+}
+/* 검증시스템: 헤더 형식·매칭 여부·항목별 합계 정합성을 전부 확인하고 결과를 보여준 뒤에만 반영 가능 */
+function validateAndPreviewExcel(aoa, run){
+  const errors=[];
+  const header1=aoa[0]||[], header2=aoa[1]||[];
+  if(val(header1[0])!=="사원코드") errors.push(`1행 A열 헤더가 "사원코드"이어야 하는데 "${esc(val(header1[0]))}"로 되어있습니다.`);
+  EXCEL_META_COLS.slice(1).forEach((k,i)=>{ const ci=i+1; if(val(header2[ci])!==k) errors.push(`2행 ${String.fromCharCode(65+ci)}열 헤더가 "${k}"이어야 하는데 "${esc(val(header2[ci]))}"로 되어있습니다.`); });
+  PAY_COLUMNS.forEach((k,i)=>{ if(val(header2[6+i])!==k) errors.push(`2행 ${String.fromCharCode(65+6+i)}열 헤더가 "${k}"이어야 하는데 "${esc(val(header2[6+i]))}"로 되어있습니다.`); });
+  DEDUCT_COLUMNS.forEach((k,i)=>{ if(val(header2[24+i])!==k) errors.push(`2행 공제항목 헤더가 "${k}"와 일치하지 않습니다.`); });
+  if(errors.length){
+    renderExcelValidationResult({headerErrors:errors, matched:[], unmatched:[], mismatched:[]}, run, null);
+    return;
+  }
+  const dataRows=aoa.slice(2).filter(r=>r && r.some(v=>v!==0 && v!==""&&v!=null));
+  const matched=[], unmatched=[], mismatched=[];
+  dataRows.forEach((r,idx)=>{
+    const code=val(r[0]);
+    const rrn=val(r[2]);
+    const name=val(r[1]);
+    const key=excelUploadMatchBy==="code" ? code : rrn;
+    let emp=null;
+    if(excelUploadMatchBy==="code") emp=EMPLOYEES.find(e=>String(e.id)===String(code));
+    else emp=digits(rrn) ? EMPLOYEES.find(e=>digits(e.rrn)===digits(rrn)) : null;
+    const row=emp ? run.rows.find(rr=>rr.empId===emp.id) : null;
+    if(!emp || !row){ unmatched.push({rowIdx:idx+3, key, name}); return; }
+    const payVals={}; PAY_COLUMNS.forEach((k,i)=>payVals[k]=parseInt(digits(r[6+i]))||0);
+    const dedVals={}; DEDUCT_COLUMNS.forEach((k,i)=>dedVals[k]=parseInt(digits(r[24+i]))||0);
+    const payTotalExcel=parseInt(digits(r[23]))||0;
+    const dedTotalExcel=parseInt(digits(r[38]))||0;
+    const payTotalCalc=PAY_COLUMNS.reduce((s,k)=>s+payVals[k],0);
+    const dedTotalCalc=DEDUCT_COLUMNS.reduce((s,k)=>s+dedVals[k],0);
+    const issues=[];
+    if(payTotalExcel && payTotalExcel!==payTotalCalc) issues.push(`지급액계 불일치(엑셀 ${payTotalExcel.toLocaleString("ko-KR")} vs 항목합 ${payTotalCalc.toLocaleString("ko-KR")})`);
+    if(dedTotalExcel && dedTotalExcel!==dedTotalCalc) issues.push(`공제액계 불일치(엑셀 ${dedTotalExcel.toLocaleString("ko-KR")} vs 항목합 ${dedTotalCalc.toLocaleString("ko-KR")})`);
+    const entry={rowIdx:idx+3, empId:emp.id, name:emp.name, payVals, dedVals, issues};
+    if(issues.length) mismatched.push(entry); else matched.push(entry);
+  });
+  renderExcelValidationResult({headerErrors:[], matched, unmatched, mismatched}, run, dataRows.length);
+}
+function renderExcelValidationResult(result, run, totalRows){
+  const {headerErrors, matched, unmatched, mismatched}=result;
+  document.getElementById("pdName").textContent="엑셀 업로드 · 검증 결과";
+  document.getElementById("pdMeta").textContent=`${run.yearMonth} · ${run.category||"급여"} 작업`;
+  if(headerErrors.length){
+    document.getElementById("pdBody").innerHTML=`
+      <div style="padding:10px 14px;border-radius:8px;background:#FBEAEA;color:#B23B3B;font-size:12.5px;margin-bottom:12px">⚠ 서식이 맞지 않아 업로드할 수 없습니다. "엑셀 템플릿 다운로드"로 받은 양식을 사용해주세요.</div>
+      <ul style="font-size:12px;color:var(--muted);line-height:1.8;padding-left:18px">${headerErrors.map(e=>`<li>${e}</li>`).join("")}</ul>
+    `;
+    return;
+  }
+  window.__excelUploadPending={matched, mismatched, runId:run.id};
+  const okCount=matched.length+mismatched.length;
+  document.getElementById("pdBody").innerHTML=`
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <div style="flex:1;text-align:center;padding:12px;border-radius:9px;background:#F1E5DB"><div style="font-size:20px;font-weight:800">${okCount}</div><div style="font-size:11px;color:var(--muted)">매칭 성공</div></div>
+      <div style="flex:1;text-align:center;padding:12px;border-radius:9px;background:${mismatched.length?"#FBEAEA":"#F1E5DB"}"><div style="font-size:20px;font-weight:800;color:${mismatched.length?"#B23B3B":"inherit"}">${mismatched.length}</div><div style="font-size:11px;color:var(--muted)">합계 불일치</div></div>
+      <div style="flex:1;text-align:center;padding:12px;border-radius:9px;background:${unmatched.length?"#FBEAEA":"#F1E5DB"}"><div style="font-size:20px;font-weight:800;color:${unmatched.length?"#B23B3B":"inherit"}">${unmatched.length}</div><div style="font-size:11px;color:var(--muted)">매칭 실패</div></div>
+    </div>
+    ${unmatched.length?`<div style="font-size:11.5px;font-weight:800;color:#B23B3B;margin-bottom:6px">매칭 실패(엑셀 행 번호 · ${excelUploadMatchBy==="code"?"사원코드":"주민번호"} · 이름)</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;max-height:100px;overflow-y:auto">${unmatched.map(u=>`${u.rowIdx}행 · ${esc(u.key)} · ${esc(u.name)}`).join("<br>")}</div>`:""}
+    ${mismatched.length?`<div style="font-size:11.5px;font-weight:800;color:#B23B3B;margin-bottom:6px">합계 불일치(그래도 항목별 금액은 반영됩니다 — 원본 확인 권장)</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;max-height:100px;overflow-y:auto">${mismatched.map(m=>`${esc(m.name)}: ${m.issues.join(", ")}`).join("<br>")}</div>`:""}
+    ${okCount?`<button class="btn" style="width:100%;justify-content:center" onclick="applyExcelUpload()">✅ 검증된 ${okCount}명 반영하기</button>`
+      :`<div style="font-size:12px;color:var(--faint);text-align:center;padding:10px">반영할 수 있는 대상이 없습니다.</div>`}
+  `;
+}
+function applyExcelUpload(){
+  const pending=window.__excelUploadPending; if(!pending) return;
+  const run=PAYROLL_RUNS.find(r=>r.id===pending.runId); if(!run) return;
+  [...pending.matched, ...pending.mismatched].forEach(entry=>{
+    const row=run.rows.find(r=>r.empId===entry.empId); if(!row) return;
+    PAY_COLUMNS.forEach(k=>{ row.pay[k]={v:entry.payVals[k], manual:true}; });
+    DEDUCT_COLUMNS.forEach(k=>{ row.deduct[k]={v:entry.dedVals[k], manual:true}; });
+  });
+  save();
+  document.getElementById("payrollDetailOverlay").classList.remove("show");
+  renderPayrollGrid();
+  alert(`${pending.matched.length+pending.mismatched.length}명의 급여 데이터가 반영되었습니다.`);
+  window.__excelUploadPending=null;
+}
+
 function openPayslipBatch(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   const dateSet=new Map(); // date -> {isRegular, empIds:Set}
