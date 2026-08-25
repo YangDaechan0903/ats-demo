@@ -3899,7 +3899,9 @@ function openMonthlyPayStatus(){
   if(!year) return;
   const runs=PAYROLL_RUNS.filter(r=>r.yearMonth.startsWith(year)).sort((a,b)=>a.yearMonth.localeCompare(b.yearMonth));
   if(!runs.length){ alert(`${year}년에 만들어진 급여 작업이 없습니다.`); return; }
-  const months=runs.map(r=>r.yearMonth);
+  // 같은 달에 급여작업이 여러 건(정기급여+인센티브 추가지급 등)일 수 있으므로, '작업' 단위가 아니라
+  // '고유한 귀속월' 단위로 컬럼을 만들고, 같은 달에 속한 작업들은 전부 그 달 컬럼 하나로 합산한다.
+  const months=[...new Set(runs.map(r=>r.yearMonth))].sort();
   const empMap={};
   runs.forEach(r=>r.rows.forEach(row=>{ if(!empMap[row.empId]) empMap[row.empId]={id:row.empId, name:row.name, dept:row.dept||""}; }));
   const empList=Object.values(empMap).sort((a,b)=>a.id-b.id);
@@ -3908,7 +3910,8 @@ function openMonthlyPayStatus(){
   const buildMatrix=(targetId)=>{
     const items={}; PAY_COLUMNS.forEach(k=>items[k]=months.map(()=>0));
     const payT=months.map(()=>0), dedT=months.map(()=>0);
-    runs.forEach((r,mi)=>{
+    runs.forEach(r=>{
+      const mi=months.indexOf(r.yearMonth); // 같은 달의 여러 작업이면 항상 같은 컬럼 인덱스로 누적됨
       const rows = targetId===0 ? r.rows : r.rows.filter(row=>row.empId===targetId);
       rows.forEach(row=>{
         PAY_COLUMNS.forEach(k=>{ items[k][mi]+=row.pay[k].v; });
