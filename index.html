@@ -72,7 +72,7 @@
   .login-switch a:hover{text-decoration:underline}
   .login-ok{font-size:12.5px;color:#5A3A2B;background:#EFE3D8;border:1px solid #DCCABD;border-radius:9px;padding:11px 12px;line-height:1.55;margin-bottom:8px;text-align:left}
   /* 재직/퇴사 탭 */
-  .emp-view-tabs{display:flex;gap:4px;margin-top:12px}
+  .emp-view-tabs{display:flex;gap:4px;margin-top:12px;align-items:center;flex-wrap:wrap}
   .emp-view-tabs .evt{background:transparent;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px;
     font-weight:700;color:var(--muted);padding:7px 14px;cursor:pointer}
   .emp-view-tabs .evt.on{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -904,6 +904,21 @@
       <div class="emp-view-tabs">
         <button class="evt on" id="evtActive" onclick="setEmpView('active')">재직자 <span id="cntActive">0</span></button>
         <button class="evt" id="evtLeave" onclick="setEmpView('leave')">퇴사자 <span id="cntLeave">0</span></button>
+        <button class="evt" id="evtAsOf" onclick="setEmpView('asof')">📅 입퇴사자 조회</button>
+        <button class="btn ghost" onclick="downloadEmpBlank()" style="margin-left:auto">📄 인사기록카드 빈 양식</button>
+        <button class="btn ghost" onclick="openEmpUploadModal()">📤 인사기록카드 업로드</button>
+      </div>
+      <div id="empAsOfFilter" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 0 0">
+        <label style="font-size:11.5px;font-weight:700;color:var(--muted)">기간</label>
+        <input id="empAsOfStart" type="date" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px" onchange="setEmpAsOfRange()">
+        <span style="color:var(--faint)">~</span>
+        <input id="empAsOfEnd" type="date" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px" onchange="setEmpAsOfRange()">
+        <span style="font-size:11.5px;color:var(--faint)">특정 하루만 보려면 시작일·종료일을 같은 날짜로 설정하세요.</span>
+      </div>
+      <div id="empAsOfSubTabs" class="pr-subtabs" style="display:none;margin-top:12px">
+        <button class="pr-subtab2" id="asofTabJoin" onclick="setEmpAsOfSub('join')">입사자</button>
+        <button class="pr-subtab2" id="asofTabLeave" onclick="setEmpAsOfSub('leave')">퇴사자</button>
+        <button class="pr-subtab2 on" id="asofTabActive" onclick="setEmpAsOfSub('active')">재직자</button>
       </div>
     </div>
     <div class="mod-body"><div id="empGrid"></div></div>
@@ -989,6 +1004,7 @@
             <button class="btn ghost" onclick="downloadExcelTemplate()">📥 현재 작업 데이터 다운로드</button>
             <button class="btn ghost" onclick="openExcelUploadModal()">📤 엑셀 업로드</button>
             <input type="file" id="excelUploadInput" accept=".xlsx,.xls" style="display:none" onchange="handleExcelFile(this.files[0])">
+            <input type="file" id="empExcelUploadInput" accept=".xlsx,.xls" style="display:none" onchange="handleEmpExcelFile(this.files[0])">
             <button class="btn ghost" onclick="openPayslipBatch()">📧 급여명세서 발송</button>
             <button class="btn ghost" onclick="applyLeaverSettlementBulk()">🧮 중도퇴사자 소득세 간편반영</button>
             <button class="btn ghost" onclick="openWageLedger()">🖨 임금대장</button>
@@ -3234,10 +3250,27 @@ function openEmpNew(){
 }
 
 /* ── 임직원 명부 렌더 ── */
-let empView="active";   // active | leave
+let empView="active";   // active | leave | asof
+let empAsOfSub="active"; // asof 모드일 때: join | leave | active
 function setEmpView(v){ empView=v;
   document.getElementById("evtActive").classList.toggle("on",v==="active");
   document.getElementById("evtLeave").classList.toggle("on",v==="leave");
+  document.getElementById("evtAsOf").classList.toggle("on",v==="asof");
+  document.getElementById("empAsOfFilter").style.display=(v==="asof")?"flex":"none";
+  document.getElementById("empAsOfSubTabs").style.display=(v==="asof")?"":"none";
+  if(v==="asof" && !document.getElementById("empAsOfStart").value){
+    const d=new Date(), first=new Date(d.getFullYear(),d.getMonth(),1), last=new Date(d.getFullYear(),d.getMonth()+1,0);
+    const fmt=(x)=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+    document.getElementById("empAsOfStart").value=fmt(first);
+    document.getElementById("empAsOfEnd").value=fmt(last);
+  }
+  renderEmployees();
+}
+function setEmpAsOfRange(){ renderEmployees(); }
+function setEmpAsOfSub(v){ empAsOfSub=v;
+  document.getElementById("asofTabJoin").classList.toggle("on",v==="join");
+  document.getElementById("asofTabLeave").classList.toggle("on",v==="leave");
+  document.getElementById("asofTabActive").classList.toggle("on",v==="active");
   renderEmployees();
 }
 function renderEmployees(){
@@ -3265,11 +3298,40 @@ function renderEmployees(){
       </div>`).join("")+`</div>`;
   }
 
-  const base=(empView==="leave"?leaveAll:activeAll);
+  let base, emptyMsg;
+  if(empView==="asof"){
+    const startStr=document.getElementById("empAsOfStart").value, endStr=document.getElementById("empAsOfEnd").value;
+    if(!startStr || !endStr){
+      grid.innerHTML=html+`<div class="emp-empty">조회할 기간(시작일~종료일)을 선택해주세요.</div>`;
+      return;
+    }
+    const start=parseYmd(startStr), end=parseYmd(endStr);
+    if(empAsOfSub==="join"){
+      base=EMPLOYEES.filter(e=>{ const jd=parseYmd(e.joinDate); return jd && jd>=start && jd<=end; });
+      emptyMsg="이 기간에 입사한 임직원이 없습니다.";
+      html+=`<div class="law-note" style="margin-bottom:14px">📥 <b>${esc(startStr)} ~ ${esc(endStr)}</b> 사이에 <b>입사</b>한 임직원 ${base.length}명입니다.</div>`;
+    } else if(empAsOfSub==="leave"){
+      base=EMPLOYEES.filter(e=>{ const ld=parseYmd(e.leaveDate); return ld && ld>=start && ld<=end; });
+      emptyMsg="이 기간에 퇴사한 임직원이 없습니다.";
+      html+=`<div class="law-note" style="margin-bottom:14px">📤 <b>${esc(startStr)} ~ ${esc(endStr)}</b> 사이에 <b>퇴사</b>한 임직원 ${base.length}명입니다.</div>`;
+    } else {
+      base=EMPLOYEES.filter(e=>{
+        const jd=parseYmd(e.joinDate), ld=parseYmd(e.leaveDate);
+        if(jd && jd>end) return false;     // 이 기간이 끝나기 전엔 아직 입사 전
+        if(ld && ld<start) return false;   // 이 기간이 시작되기 전에 이미 퇴사 완료
+        return true;
+      });
+      emptyMsg="이 기간에 재직 중이었던 임직원이 없습니다.";
+      html+=`<div class="law-note" style="margin-bottom:14px">📅 <b>${esc(startStr)} ~ ${esc(endStr)}</b> 기간 중 하루라도 <b>재직</b> 중이었던 임직원 ${base.length}명입니다. 배지의 재직/퇴사 상태는 <b>현재 시점</b> 기준입니다.</div>`;
+    }
+  } else {
+    base=(empView==="leave"?leaveAll:activeAll);
+    emptyMsg=empView==="leave"?"퇴사자가 없습니다.":"아직 등록된 재직 임직원이 없습니다.<br>ATS 최종 합격자를 전환하거나, 우측 상단 <b>임직원 등록</b>으로 추가하세요.";
+  }
   const list=base.filter(e=> !q || (e.name+" "+(e.dept||"")+" "+(e.position||"")).toLowerCase().includes(q));
 
   if(!list.length && !(empView==="active"&&conv.length)){
-    grid.innerHTML=html+`<div class="emp-empty">${empView==="leave"?"퇴사자가 없습니다.":"아직 등록된 재직 임직원이 없습니다.<br>ATS 최종 합격자를 전환하거나, 우측 상단 <b>임직원 등록</b>으로 추가하세요."}</div>`;
+    grid.innerHTML=html+`<div class="emp-empty">${emptyMsg}</div>`;
     return;
   }
 
@@ -3790,6 +3852,151 @@ function applyExcelUpload(){
   renderPayrollGrid();
   alert(`${pending.matched.length+pending.mismatched.length}명의 급여 데이터가 반영되었습니다.`);
   window.__excelUploadPending=null;
+}
+
+/* ═══════════════════════ 인사기록카드 엑셀 업로드 ═══════════════════════
+   빈 양식을 내려받아 오프라인에서 채운 뒤 업로드하면, 한 행당 임직원 1명이 새로 생성된다.
+   인사기록카드에 있는 모든 항목(인사팀 작성란 포함)을 담는다 — 인사팀만 접근하는 자료이므로 전부 노출해도 무방.
+   3행에는 예시 데이터가 미리 채워져 있어 형식을 헷갈리지 않도록 돕는다. */
+const EMP_XLSX_BASIC=[["name","성명"],["engName","영문이름"],["birth","생년월일"],["gender","성별"],["dept","부서"],["position","직위"],
+  ["joinDate","입사일자"],["leaveDate","퇴사일자"],["status","재직상태"],["addr","현주소"],["email","개인이메일"],
+  ["phone","전화번호"],["emgContact","비상연락처"],["emgRelation","비상연락 관계"]];
+function buildEmpExcelHeader(){
+  const h1=new Array(EMP_XLSX_COLS.length).fill("");
+  let ci=0;
+  const merges=[];
+  EMP_XLSX_SECTIONS.forEach(([title,fields])=>{
+    h1[ci]=title;
+    if(fields.length>1) merges.push({s:{r:0,c:ci},e:{r:0,c:ci+fields.length-1}});
+    ci+=fields.length;
+  });
+  const h2=EMP_XLSX_COLS.map(([,label])=>label);
+  return {rows:[h1,h2], merges};
+}
+function downloadEmpBlank(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
+  const {rows, merges}=buildEmpExcelHeader();
+  const exampleRow=EMP_XLSX_COLS.map(([key])=>EMP_XLSX_EXAMPLE[key]!==undefined?EMP_XLSX_EXAMPLE[key]:"");
+  rows.push(exampleRow);
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws["!merges"]=merges;
+  ws["!cols"]=EMP_XLSX_COLS.map(()=>({wch:14}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  XLSX.writeFile(wb, "인사기록카드_빈양식.xlsx");
+}
+function openEmpUploadModal(){
+  document.getElementById("pdName").textContent="인사기록카드 업로드";
+  document.getElementById("pdMeta").textContent="엑셀 한 행당 임직원 1명이 새로 등록됩니다";
+  document.getElementById("pdBody").innerHTML=`
+    <div style="font-size:11px;color:var(--faint);line-height:1.7;margin-bottom:14px;padding:10px 12px;background:var(--bg);border-radius:8px">
+      <b>작업 순서</b>: ① "인사기록카드 빈 양식" 다운로드(3행에 예시 데이터가 미리 채워져 있습니다) → ② 3행을 참고해 4행부터 실제 데이터를 채움(예시행은 지우거나 그대로 둬도 무방) → ③ 여기서 업로드 → ④ 아래 검증 결과를 확인 후 반영<br>
+      💡 <b>성명</b>과 <b>입사일자</b>는 필수입니다. 재직상태 칸은 "재직" 또는 "퇴사"로 적어주세요(비워두면 재직으로 처리).<br>
+      ⚠ 학력ㆍ경력ㆍ자격증ㆍ가족사항은 개수가 사람마다 달라 엑셀 한 줄로 표현하기 어려워, 업로드 후 인사기록카드 화면에서 직접 추가해주세요.
+    </div>
+    <button class="btn" style="width:100%;justify-content:center" onclick="document.getElementById('empExcelUploadInput').click()">📁 엑셀 파일 선택</button>
+  `;
+  document.getElementById("payrollDetailOverlay").classList.add("show");
+}
+function handleEmpExcelFile(file){
+  if(!file) return;
+  if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다."); return; }
+  const reader=new FileReader();
+  reader.onload=(ev)=>{
+    try{
+      const wb=XLSX.read(ev.target.result, {type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const aoa=XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+      validateAndPreviewEmpExcel(aoa);
+    }catch(err){ alert("엑셀 파일을 읽을 수 없습니다: "+err.message); }
+  };
+  reader.readAsArrayBuffer(file);
+  document.getElementById("empExcelUploadInput").value="";
+}
+function validateAndPreviewEmpExcel(aoa){
+  const header=aoa[1]||[];
+  const headerErrors=[];
+  EMP_XLSX_COLS.forEach(([,label],i)=>{ if(val(header[i])!==label) headerErrors.push(`2행 ${i+1}번째 열 헤더가 "${label}"이어야 하는데 "${esc(val(header[i]))}"로 되어있습니다.`); });
+  if(headerErrors.length){ renderEmpExcelValidationResult({headerErrors, valid:[], invalid:[]}); return; }
+  // 3행은 예시 데이터이므로 건너뛰고 4행부터 실제 데이터로 취급
+  const dataRows=aoa.slice(3).filter(r=>r && r.some(v=>v!==""&&v!=null));
+  const nameIdx=EMP_XLSX_COLS.findIndex(([k])=>k==="name");
+  const joinIdx=EMP_XLSX_COLS.findIndex(([k])=>k==="joinDate");
+  const leaveIdx=EMP_XLSX_COLS.findIndex(([k])=>k==="leaveDate");
+  const statusIdx=EMP_XLSX_COLS.findIndex(([k])=>k==="status");
+  const valid=[], invalid=[];
+  dataRows.forEach((r,idx)=>{
+    const rowNo=idx+4;
+    const name=val(r[nameIdx]);
+    const joinDate=val(r[joinIdx]);
+    const leaveDate=val(r[leaveIdx]);
+    const issues=[];
+    if(!name) issues.push("성명이 비어있습니다");
+    if(!joinDate) issues.push("입사일자가 비어있습니다");
+    else if(!/^\d{4}-\d{2}-\d{2}$/.test(joinDate.trim())) issues.push(`입사일자 형식이 올바르지 않습니다("${esc(joinDate)}") — YYYY-MM-DD로 적어주세요`);
+    if(leaveDate && !/^\d{4}-\d{2}-\d{2}$/.test(leaveDate.trim())) issues.push(`퇴사일자 형식이 올바르지 않습니다("${esc(leaveDate)}")`);
+    const statusRaw=val(r[statusIdx]);
+    const status = statusRaw.includes("퇴사") ? "leave" : "active";
+    const fields={};
+    EMP_XLSX_COLS.forEach(([key],i)=>{ fields[key]=val(r[i]); });
+    const entry={ rowNo, name, dept:fields.dept, joinDate, leaveDate, status, fields, issues };
+    if(issues.length) invalid.push(entry); else valid.push(entry);
+  });
+  renderEmpExcelValidationResult({headerErrors:[], valid, invalid});
+}
+function renderEmpExcelValidationResult(result){
+  window.__empUploadPending=result;
+  const {headerErrors, valid, invalid}=result;
+  document.getElementById("pdName").textContent="인사기록카드 업로드 · 검증 결과";
+  if(headerErrors.length){
+    document.getElementById("pdBody").innerHTML=`
+      <div style="color:#B23B3B;font-weight:700;margin-bottom:8px">⚠ 엑셀 서식이 맞지 않아 업로드할 수 없습니다</div>
+      <ul style="font-size:12px;color:var(--muted);line-height:1.8;padding-left:18px;max-height:200px;overflow-y:auto">${headerErrors.map(e=>`<li>${e}</li>`).join("")}</ul>
+      <div style="font-size:11.5px;color:var(--faint);margin-top:10px">"인사기록카드 빈 양식"을 다시 받아서 헤더 행을 건드리지 말고 값만 채워주세요.</div>
+    `;
+    return;
+  }
+  document.getElementById("pdBody").innerHTML=`
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <div style="flex:1;text-align:center;padding:14px;background:#F1E5DB;border-radius:10px">
+        <div style="font-size:22px;font-weight:800;color:#5A3A2B">${valid.length}</div><div style="font-size:11px;color:var(--muted)">등록 가능</div>
+      </div>
+      <div style="flex:1;text-align:center;padding:14px;background:#F5DEDA;border-radius:10px">
+        <div style="font-size:22px;font-weight:800;color:#B23B3B">${invalid.length}</div><div style="font-size:11px;color:var(--muted)">오류(제외)</div>
+      </div>
+    </div>
+    ${invalid.length?`<div style="font-size:11.5px;font-weight:800;color:#B23B3B;margin-bottom:6px">오류 행(엑셀 행 번호 · 성명 · 사유)</div>
+      <div style="max-height:140px;overflow-y:auto;font-size:11.5px;color:var(--muted);line-height:1.8;margin-bottom:14px">
+      ${invalid.map(e=>`${e.rowNo}행 · ${esc(e.name||"(성명없음)")} · ${e.issues.join(", ")}`).join("<br>")}</div>`:""}
+    ${valid.length?`<div style="font-size:11.5px;font-weight:800;margin-bottom:6px">등록될 임직원</div>
+      <div style="max-height:180px;overflow-y:auto;font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:14px">
+      ${valid.map(e=>`${esc(e.name)} · ${esc(e.dept||"부서미정")} · 입사 ${esc(e.joinDate)}${e.status==="leave"?` · 퇴사 ${esc(e.leaveDate||"")}`:""}`).join("<br>")}</div>
+      <button class="btn" style="width:100%;justify-content:center" onclick="applyEmpExcelUpload()">✓ ${valid.length}명 인사기록카드 등록</button>`
+      :`<div style="font-size:12px;color:var(--faint)">등록할 수 있는 행이 없습니다.</div>`}
+  `;
+}
+function applyEmpExcelUpload(){
+  const pending=window.__empUploadPending; if(!pending || !pending.valid.length) return;
+  pending.valid.forEach(entry=>{
+    const e=blankEmployee();
+    Object.keys(entry.fields).forEach(key=>{
+      const v=entry.fields[key];
+      if(v==="") return; // 빈 칸은 blankEmployee()의 기본값을 그대로 둠
+      if(key.startsWith("military.")){
+        const sub=key.split(".")[1];
+        e.military=e.military||{}; e.military[sub]=v;
+      } else {
+        e[key]=v;
+      }
+    });
+    e.status=entry.status; // "재직"/"퇴사" 문구 → active/leave 코드로 정확히 반영
+    EMPLOYEES.push(e);
+  });
+  save();
+  document.getElementById("payrollDetailOverlay").classList.remove("show");
+  renderEmployees();
+  alert(`${pending.valid.length}명의 인사기록카드가 등록되었습니다.`);
+  window.__empUploadPending=null;
 }
 
 function openPayslipBatch(){
@@ -4851,6 +5058,34 @@ const RC_TAX_FIELDS=[   // 세액·감면 정보
   ["sailorYn","선원여부"]
 ];
 const RC_EXT_SECTIONS=[["고용·신분 정보",RC_EMP_FIELDS],["급여이체 정보",RC_BANK_FIELDS],["급여·4대보험 정보",RC_PAY_FIELDS],["세액·감면 정보",RC_TAX_FIELDS]];
+/* 인사기록카드 엑셀 업로드용 컬럼 구성 — RC_*_FIELDS 정의 이후에 와야 하므로 여기서 조립한다 */
+const EMP_XLSX_MIL=[["military.status","병역상태"],["military.branch","군별"],["military.mos","병과"],["military.period","복무기간"]];
+const EMP_XLSX_SECTIONS=[
+  ["기본 인적사항", EMP_XLSX_BASIC],
+  ["고용ㆍ신분 정보", RC_EMP_FIELDS],
+  ["병역사항", EMP_XLSX_MIL],
+  ["급여이체 정보", RC_BANK_FIELDS],
+  ["급여ㆍ4대보험 정보(인사팀 작성)", RC_PAY_FIELDS],
+  ["세액ㆍ감면 정보(인사팀 작성)", RC_TAX_FIELDS]
+];
+const EMP_XLSX_COLS=EMP_XLSX_SECTIONS.flatMap(([,fields])=>fields); // [[key,label], ...] 전체 펼침
+const EMP_XLSX_EXAMPLE={
+  name:"홍길동", engName:"HONG GILDONG", birth:"1990-01-15", gender:"남", dept:"경영지원팀", position:"대리",
+  joinDate:"2024-03-02", leaveDate:"", status:"재직", addr:"서울특별시 강남구 테헤란로 123", email:"gildong@example.com",
+  phone:"02-1234-5678", emgContact:"010-9876-5432", emgRelation:"배우자",
+  residentNo:"900115-1234567", foreignType:"내국인", nationality:"대한민국", mobile:"010-1234-5678", addrDetail:"5층 501호",
+  messengerId:"gildong.hong", residenceCountry:"대한민국", visaStatus:"", flatTaxYn:"부", jobType:"사무직", payStep:"3호봉",
+  site:"본사", project:"", workerType:"상시근로자", careerBreakYn:"부", regularConvertYn:"해당없음", defectorYn:"부", empNote:"",
+  "military.status":"군필", "military.branch":"육군", "military.mos":"보병", "military.period":"2010-03-02~2012-01-01",
+  bankName:"국민은행", accountNo:"123456-78-901234", accountHolder:"홍길동",
+  payAccount:"판매비와관리비", bonusAccount:"판매비와관리비", payType:"월급직", avgMonthlyWage:"3500000",
+  npWage:"3500000", npFee:"157500", hiWage:"3500000", hiFee:"125825", eiWage:"3500000", eiFee:"31500",
+  hiReduceYn:"부", hiReduceRate:"", hiCardNo:"", ceoYn:"부", eiApplyYn:"여", wcApplyYn:"여", ltcApplyYn:"여",
+  ltcReduceRate:"", duruYn:"부", duruEiRate:"", duruNpRate:"",
+  taxAdjStartMonth:"", taxAdjRate:"100%", smeReduceYn:"부", smeReducePeriod:"", smeReduceRate:"",
+  taxReliefTarget:"", taxMilitaryPeriod:"", studentLoanYn:"부", studentLoanPeriod:"", studentLoanAmt:"",
+  overseasYn:"부", productionYn:"부", overtimeTaxFreeYn:"부", yearEndInstallmentYn:"부", foreignDispatchYn:"부", sailorYn:"부"
+};
 const RC_MONEY_FIELDS=new Set(["avgMonthlyWage","npWage","npFee","hiWage","hiFee","eiWage","eiFee","studentLoanAmt"]);
 function rcFieldInput(e,on,k){
   if(RC_MONEY_FIELDS.has(k)){
