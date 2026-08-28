@@ -1427,40 +1427,59 @@ function lightEmployees(){
   // photoData는 리사이즈된 작은 이미지라 클라우드에도 저장(기기 간 공유). 큰 계약서 파일만 제외.
   return (EMPLOYEES||[]).map(e=>({ ...e, contractFileData:"" }));
 }
+// 운영 데이터(jobs·employees·payrollRuns·companyInfo)를 현재 회사(company_data)에 저장.
+// ※ users(승인·권한)는 여기서 저장하지 않음 — app_state에 유지(saveUsers 참조, 증분2에서 memberships로 이전).
+// ※ companyInfo는 전환기 동안 company_data blob에 동반 저장(추후 companies.company_info 컬럼으로 완전 이전 예정).
 async function cloudPush(){
+  if(!CURRENT_COMPANY_ID){ setCloud(false, "⚠ 소속 회사 없음(로컬 저장됨)"); return; }
   try{
-    const payload = { jobs: lightCopy(), employees: lightEmployees(), users: USERS, payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO };
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?on_conflict=id`, {
+    const payload = { jobs: lightCopy(), employees: lightEmployees(), payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO };
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
       method:"POST",
       headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
-      body: JSON.stringify({ id:"main", data: payload, updated_at:new Date().toISOString() })
+      body: JSON.stringify({ company_id: CURRENT_COMPANY_ID, data: payload, updated_at:new Date().toISOString() })
     });
     if(res.ok) setCloud(true, "☁ 동기화됨");
     else setCloud(false, "⚠ 동기화 오류 "+res.status);
   }catch(e){ setCloud(false, "⚠ 오프라인(로컬 저장됨)"); }
 }
-// app_state.data는 두 형식 가능: (구형) JOBS 배열 그대로 / (신형) {jobs, employees, users}
+// data(jsonb) 파서 — company_data/app_state 공용. 두 형식 허용: (구형) JOBS 배열 그대로 / (신형) {jobs, employees, users, payrollRuns, companyInfo}
 function unpackData(d){
   if(Array.isArray(d)) return { jobs:d, employees:[], users:[], payrollRuns:[], companyInfo:{} };       // 구형 → 자동 마이그레이션
   if(d && typeof d==="object") return { jobs:Array.isArray(d.jobs)?d.jobs:[], employees:Array.isArray(d.employees)?d.employees:[], users:Array.isArray(d.users)?d.users:[], payrollRuns:Array.isArray(d.payrollRuns)?d.payrollRuns:[], companyInfo:(d.companyInfo&&typeof d.companyInfo==="object")?d.companyInfo:{} };
   return null;
 }
 async function load(){
+  // 1) 운영 데이터 ← company_data (신 멀티테넌트 구조, 현재 회사 기준)
   let cloud=null;
-  try{
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: await sbHeaders() });
-    if(res.ok){ const rows=await res.json(); if(rows.length) cloud=unpackData(rows[0].data); setCloud(true,"☁ 동기화됨"); }
-    else setCloud(false, "⚠ 연결 오류 "+res.status);
-  }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
+  if(CURRENT_COMPANY_ID){
+    try{
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${CURRENT_COMPANY_ID}&select=data`, { headers: await sbHeaders() });
+      if(res.ok){ const rows=await res.json(); if(rows.length) cloud=unpackData(rows[0].data); setCloud(true,"☁ 동기화됨"); }
+      else setCloud(false, "⚠ 연결 오류 "+res.status);
+    }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
+  } else {
+    setCloud(false, "⚠ 소속 회사 없음(로컬 사용)");
+  }
 
-  // 로컬 캐시 (STORE=jobs, EMP_STORE=employees)
+  // 2) 사용자/승인 목록 ← app_state (증분2에서 memberships로 이전 예정)
+  let usersCloud=null;
+  try{
+    const uRes = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: await sbHeaders() });
+    if(uRes.ok){ const rows=await uRes.json(); if(rows.length){ const d=unpackData(rows[0].data); usersCloud=d.users||[]; } }
+  }catch(e){}
+
+  // 회사 이전분 companyInfo(마이그레이션으로 companies.company_info에 있을 수 있음) — company_data blob에 없을 때 시드로 사용
+  const ciFromCompany = (CURRENT_COMPANY && CURRENT_COMPANY.company_info && typeof CURRENT_COMPANY.company_info==="object" && Object.keys(CURRENT_COMPANY.company_info).length) ? CURRENT_COMPANY.company_info : null;
+
+  // 로컬 캐시 (STORE=jobs, EMP_STORE=employees) — 첨부파일 복원 + 오프라인
   let localJobs=null, localEmps=null, localPay=null, localCompany=null;
   try{ const r=localStorage.getItem(STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localJobs=a; } }catch(e){}
   try{ const r=localStorage.getItem(EMP_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localEmps=a; } }catch(e){}
   try{ const r=localStorage.getItem(PAY_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localPay=a; } }catch(e){}
   try{ const r=localStorage.getItem(COMPANY_STORE); if(r){ const a=JSON.parse(r); if(a&&typeof a==="object") localCompany=a; } }catch(e){}
 
-  if(cloud && (cloud.jobs.length || cloud.employees.length || cloud.users.length)){
+  if(cloud && (cloud.jobs.length || cloud.employees.length)){
     // 첨부파일은 기기 로컬에만 있으므로 클라우드 데이터에 다시 붙여줌
     const fileMap={};
     if(localJobs) for(const j of localJobs) for(const c of (j.cands||[])) fileMap[c.id]={fileData:c.fileData,audioData:c.audioData};
@@ -1470,23 +1489,51 @@ async function load(){
     for(const e of cloud.employees){ const f=empFileMap[e.id]; if(f){ if(f.contractFileData)e.contractFileData=f.contractFileData; if(f.photoData)e.photoData=f.photoData; } }
     JOBS=cloud.jobs.length?cloud.jobs:seed();
     EMPLOYEES=cloud.employees||[];
-    USERS=cloud.users||[];
+    USERS=usersCloud||[];
     PAYROLL_RUNS=cloud.payrollRuns||localPay||[];
-    COMPANY_INFO={...blankCompanyInfo(), ...(cloud.companyInfo&&Object.keys(cloud.companyInfo).length?cloud.companyInfo:(localCompany||{}))};
+    // companyInfo 우선순위: company_data blob → 회사 이전분(companies) → 로컬 → 빈값
+    COMPANY_INFO={...blankCompanyInfo(), ...((cloud.companyInfo&&Object.keys(cloud.companyInfo).length)?cloud.companyInfo:(ciFromCompany||localCompany||{}))};
     persistLocal();
   } else if(localJobs && localJobs.length){
-    JOBS=localJobs; EMPLOYEES=localEmps||[]; USERS=USERS||[]; PAYROLL_RUNS=localPay||[]; COMPANY_INFO={...blankCompanyInfo(), ...(localCompany||{})}; cloudPush();
+    JOBS=localJobs; EMPLOYEES=localEmps||[]; USERS=usersCloud||[]; PAYROLL_RUNS=localPay||[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||localCompany||{})}; cloudPush();
   } else {
-    JOBS=seed(); EMPLOYEES=[]; USERS=USERS||[]; PAYROLL_RUNS=[]; COMPANY_INFO=blankCompanyInfo(); cloudPush();
+    JOBS=seed(); EMPLOYEES=[]; USERS=usersCloud||[]; PAYROLL_RUNS=[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||{})}; cloudPush();
   }
 }
-// 로그인 전, 승인 여부 확인을 위해 users만 읽기
+// 로그인 후: 내가 속한 회사(테넌트)를 확정한다. 단일회사 UX이므로 보통 활성 멤버십 1개.
+// 멤버십이 없으면 CURRENT_COMPANY_ID=null → load()는 로컬/seed로 폴백(증분2 온보딩·이전에서 처리).
+async function resolveCompanyContext(){
+  CURRENT_COMPANY_ID=null; CURRENT_COMPANY=null; CURRENT_MEMBERSHIP=null;
+  try{
+    // RLS로 본인 멤버십만 조회됨
+    const mRes = await fetch(`${SUPABASE_URL}/rest/v1/memberships?select=company_id,role,permissions,status,name&order=requested_at.asc`, { headers: await sbHeaders() });
+    if(mRes.ok){
+      const rows = await mRes.json();
+      const pick = rows.find(r=>r.status==="active") || rows[0] || null;   // 활성 우선
+      if(pick){ CURRENT_MEMBERSHIP=pick; CURRENT_COMPANY_ID=pick.company_id; }
+    }
+  }catch(e){ /* 네트워크 오류 → null 유지 */ }
+  // 회사 행(이름·features·company_info) 로드
+  if(CURRENT_COMPANY_ID){
+    try{
+      const cRes = await fetch(`${SUPABASE_URL}/rest/v1/companies?id=eq.${CURRENT_COMPANY_ID}&select=id,name,biz_no,plan,features,company_info`, { headers: await sbHeaders() });
+      if(cRes.ok){ const rows=await cRes.json(); if(rows.length) CURRENT_COMPANY=rows[0]; }
+    }catch(e){}
+  }
+  return CURRENT_COMPANY_ID;
+}
+// 로그인 전, 승인 여부 확인을 위해 users만 읽기 (app_state 유지 — 증분2에서 memberships로 이전)
 async function loadUsersOnly(){
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: await sbHeaders() });
     if(res.ok){ const rows=await res.json(); if(rows.length){ const d=unpackData(rows[0].data); USERS=d.users||[]; } }
   }catch(e){}
   return USERS;
+}
+// 사용자/승인 목록만 저장 (app_state) — cloudPush에서 users를 뺐으므로 승인·권한 변경은 이 경로로 저장.
+function saveUsers(){
+  try{ persistLocal(); }catch(e){}
+  cloudPushUsers();   // app_state에 users 병합 저장 (기존 함수 재사용)
 }
 function persistLocal(){
   try{ localStorage.setItem(STORE, JSON.stringify(JOBS)); }catch(e){}
@@ -1508,6 +1555,11 @@ function blankCompanyInfo(){
 let USERS=[];            // 회원(가입 신청·승인·권한) 목록
 const ADMIN_EMAIL="ydc0126@naver.com";   // 고정 관리자
 let curUser=null;        // 현재 로그인한 사용자의 USERS 레코드
+// ── 멀티테넌트 회사(테넌트) 컨텍스트 ──
+// 로그인 후 memberships에서 확정한다. 단일회사 UX이므로 보통 활성 멤버십 1개.
+let CURRENT_COMPANY_ID=null;   // 현재 사용자가 속한 회사 id (company_data / companies 조회 키)
+let CURRENT_COMPANY=null;      // companies 행 {id,name,biz_no,plan,features,company_info}
+let CURRENT_MEMBERSHIP=null;   // 내 memberships 행 {company_id,role,permissions,status,name} — 증분2 권한판정에서 사용 예정
 let curModule="home";    // 현재 활성 모듈 (접속 시 홈 대시보드부터 시작)
 let openEmpId=null, empEdit=false, edPanel="record";
 let nextEmpId=1;
@@ -1552,12 +1604,13 @@ async function startApp(){
   if(su) su.textContent = session && session.email ? "👤 "+session.email : "";
   const gu=document.getElementById("gnbUser");
   if(gu) gu.textContent = session && session.email ? "👤 "+session.email : "";
+  await resolveCompanyContext();   // 내가 속한 회사(테넌트) 확정 → 그 회사 데이터만 로드
   await load();
   curUser = findUser(session && session.email);
   // 관리자는 users에 없어도 동작. 관리자가 users에 없으면 추가해둠(승인·전체권한)
   if(isAdmin() && !curUser){
     curUser=blankUser(session.email,"관리자"); curUser.status="approved";
-    ALL_PERMS.forEach(p=>curUser.perms[p]=true); USERS.push(curUser); save();
+    ALL_PERMS.forEach(p=>curUser.perms[p]=true); USERS.push(curUser); saveUsers();
   }
   applyPerms();
   curJob = JOBS[0] ? JOBS[0].id : null;
@@ -3077,22 +3130,22 @@ function approveUser(email){
   if(!u.perms) u.perms={ats:false,contract:false,employees:false,labor:false,hrPayroll:false};
   if(u.perms.hrPayroll===undefined) u.perms.hrPayroll=false;
   if(!ALL_PERMS.some(p=>u.perms[p])) u.perms.ats=true;
-  save(); renderAdmin();
+  saveUsers(); renderAdmin();
 }
 function rejectUser(email){
   const u=findUser(email); if(!u) return;
   if(!confirm(`${u.name||email} 님의 접근을 차단(거절)할까요?`)) return;
-  u.status="rejected"; save(); renderAdmin();
+  u.status="rejected"; saveUsers(); renderAdmin();
 }
 function deleteUser(email){
   const u=findUser(email); if(!u) return;
   if(!confirm(`${u.name||email} 님의 가입 기록을 삭제할까요?\n(로그인 계정 자체는 남아있으며, 재신청 가능합니다)`)) return;
-  USERS=USERS.filter(x=>x!==u); save(); renderAdmin();
+  USERS=USERS.filter(x=>x!==u); saveUsers(); renderAdmin();
 }
 function setUserPerm(email,perm,val){
   const u=findUser(email); if(!u) return;
   u.perms=u.perms||{ats:false,contract:false,employees:false,labor:false,hrPayroll:false};
-  u.perms[perm]=val; save();
+  u.perms[perm]=val; saveUsers();
   // 체크박스 라벨 하이라이트만 갱신
   renderAdmin();
 }
