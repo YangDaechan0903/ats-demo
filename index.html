@@ -1462,12 +1462,8 @@ async function load(){
     setCloud(false, "⚠ 소속 회사 없음(로컬 사용)");
   }
 
-  // 2) 사용자/승인 목록 ← app_state (증분2에서 memberships로 이전 예정)
-  let usersCloud=null;
-  try{
-    const uRes = await fetch(`${SUPABASE_URL}/rest/v1/app_state?id=eq.main&select=data`, { headers: await sbHeaders() });
-    if(uRes.ok){ const rows=await uRes.json(); if(rows.length){ const d=unpackData(rows[0].data); usersCloud=d.users||[]; } }
-  }catch(e){}
+  // (봉인) 사용자/승인 목록은 더 이상 app_state에서 읽지 않음 — 권한 정본은 memberships.
+  // USERS는 하위호환용 빈 배열로 둔다.
 
   // 회사 이전분 companyInfo(마이그레이션으로 companies.company_info에 있을 수 있음) — company_data blob에 없을 때 시드로 사용
   const ciFromCompany = (CURRENT_COMPANY && CURRENT_COMPANY.company_info && typeof CURRENT_COMPANY.company_info==="object" && Object.keys(CURRENT_COMPANY.company_info).length) ? CURRENT_COMPANY.company_info : null;
@@ -1489,15 +1485,15 @@ async function load(){
     for(const e of cloud.employees){ const f=empFileMap[e.id]; if(f){ if(f.contractFileData)e.contractFileData=f.contractFileData; if(f.photoData)e.photoData=f.photoData; } }
     JOBS=cloud.jobs.length?cloud.jobs:seed();
     EMPLOYEES=cloud.employees||[];
-    USERS=usersCloud||[];
+    USERS=[];
     PAYROLL_RUNS=cloud.payrollRuns||localPay||[];
     // companyInfo 우선순위: company_data blob → 회사 이전분(companies) → 로컬 → 빈값
     COMPANY_INFO={...blankCompanyInfo(), ...((cloud.companyInfo&&Object.keys(cloud.companyInfo).length)?cloud.companyInfo:(ciFromCompany||localCompany||{}))};
     persistLocal();
   } else if(localJobs && localJobs.length){
-    JOBS=localJobs; EMPLOYEES=localEmps||[]; USERS=usersCloud||[]; PAYROLL_RUNS=localPay||[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||localCompany||{})}; cloudPush();
+    JOBS=localJobs; EMPLOYEES=localEmps||[]; USERS=[]; PAYROLL_RUNS=localPay||[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||localCompany||{})}; cloudPush();
   } else {
-    JOBS=seed(); EMPLOYEES=[]; USERS=usersCloud||[]; PAYROLL_RUNS=[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||{})}; cloudPush();
+    JOBS=seed(); EMPLOYEES=[]; USERS=[]; PAYROLL_RUNS=[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||{})}; cloudPush();
   }
 }
 // 로그인 후: 내가 속한 회사(테넌트)를 확정한다. 단일회사 UX이므로 보통 활성 멤버십 1개.
@@ -1633,11 +1629,15 @@ async function startApp(){
   if(gu) gu.textContent = session && session.email ? "👤 "+session.email : "";
   await resolveCompanyContext();   // 내가 속한 회사(테넌트) 확정 → 그 회사 데이터만 로드
   await load();
-  curUser = findUser(session && session.email);
-  // 관리자는 users에 없어도 동작. 관리자가 users에 없으면 추가해둠(승인·전체권한)
-  if(isAdmin() && !curUser){
-    curUser=blankUser(session.email,"관리자"); curUser.status="approved";
-    ALL_PERMS.forEach(p=>curUser.perms[p]=true); USERS.push(curUser); saveUsers();
+  // curUser는 이름 표시·하위호환 폴백용. 정본은 memberships(CURRENT_MEMBERSHIP)에서 가져온다.
+  if(CURRENT_MEMBERSHIP){
+    curUser={ name:CURRENT_MEMBERSHIP.name||"", status:CURRENT_MEMBERSHIP.status, perms:(CURRENT_MEMBERSHIP.permissions||{}) };
+  } else if(isAdmin()){
+    // 멤버십 없는 플랫폼 운영자 등 — 전체 권한 표시용(app_state에는 저장하지 않음)
+    curUser={ name:"관리자", status:"active", perms:{} };
+    ALL_PERMS.forEach(p=>curUser.perms[p]=true); curUser.perms.hrPayroll=true;
+  } else {
+    curUser=null;
   }
   applyPerms();
   curJob = JOBS[0] ? JOBS[0].id : null;
@@ -1685,12 +1685,8 @@ async function doLogin(){
       if(CURRENT_MEMBERSHIP.status==="rejected"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입이 거절되었습니다. 관리자에게 문의하세요."; saveSession(null); return; }
       // status==="active" → 통과
     } else {
-      // 하위호환: 아직 멤버십이 없는 계정 → 옛 app_state.users 확인
-      await loadUsersOnly();
-      const u=findUser(email);
-      if(!u){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입 신청 기록이 없습니다. 회원가입을 먼저 진행하세요."; saveSession(null); return; }
-      if(u.status==="pending"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="아직 관리자 승인 대기 중입니다."; saveSession(null); return; }
-      if(u.status==="rejected"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입이 거절되었습니다. 관리자에게 문의하세요."; saveSession(null); return; }
+      // 멤버십이 없음 = 승인된 소속 없음
+      btn.disabled=false; btn.textContent="로그인"; err.textContent="승인된 소속이 없습니다. 회원가입 신청 후 관리자 승인을 받아주세요."; saveSession(null); return;
     }
   }
   btn.disabled=false; btn.textContent="로그인";
@@ -3140,6 +3136,22 @@ function companyInfoFull(){
   return COMPANY_INFO && COMPANY_INFO.name ? COMPANY_INFO : blankCompanyInfo();
 }
 
+// 관리자 화면 저장 피드백 토스트
+function adminToast(msg, ok){
+  if(ok===undefined) ok=true;
+  let t=document.getElementById("adminToast");
+  if(!t){
+    t=document.createElement("div"); t.id="adminToast";
+    t.style.cssText="position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:9999;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.15);transition:opacity .3s;opacity:0;pointer-events:none;";
+    document.body.appendChild(t);
+  }
+  t.textContent=msg;
+  t.style.background = ok ? "#4A7C59" : "#8B3A2F";
+  t.style.color="#fff";
+  t.style.opacity="1";
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>{ t.style.opacity="0"; }, 1400);
+}
 // 관리자용: 현재 회사의 전체 멤버십을 읽어온다 (RLS: 회사관리자는 회사 멤버십 조회 가능)
 async function loadMemberships(){
   MEMBERSHIPS=[];
@@ -3221,6 +3233,7 @@ async function approveMembership(id){
   if(!ALL_PERMS.some(p=>perms[p]) && !perms.hrPayroll){ perms.ats=true; }
   const ok=await patchMembership(id, { status:"active", approved_at:new Date().toISOString(), permissions:perms });
   if(!ok) alert("승인 저장에 실패했습니다. 회사관리자 권한·네트워크를 확인하세요.");
+  else adminToast("✓ 승인되었습니다");
   await loadMemberships(); renderAdmin();
 }
 async function rejectMembership(id){
@@ -3243,9 +3256,11 @@ async function setMembershipPerm(id, perm, val){
   const m=MEMBERSHIPS.find(x=>String(x.id)===String(id)); if(!m) return;
   const perms=Object.assign({ats:false,contract:false,employees:false,labor:false,hrPayroll:false}, m.permissions||{});
   perms[perm]=val; m.permissions=perms;   // 낙관적 갱신
+  renderAdmin();                            // 체크 상태 즉시 반영
   const ok=await patchMembership(id, { permissions:perms });
-  if(!ok) alert("권한 저장에 실패했습니다. 다시 시도해 주세요.");
-  await loadMemberships(); renderAdmin();
+  if(ok) adminToast("✓ 저장됨");
+  else adminToast("저장 실패 — 다시 시도해 주세요", false);
+  await loadMemberships(); renderAdmin();   // 서버 실제값으로 재확정
 }
 
 /* ── 임직원 데이터 유틸 ── */
