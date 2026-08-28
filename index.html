@@ -1566,6 +1566,9 @@ let CURRENT_COMPANY_ID=null;   // 현재 사용자가 속한 회사 id (company_
 let CURRENT_COMPANY=null;      // companies 행 {id,name,biz_no,plan,features,company_info}
 let CURRENT_MEMBERSHIP=null;   // 내 memberships 행 {company_id,role,permissions,status,name} — 권한판정 정본
 let IS_PLATFORM_ADMIN=false;   // 플랫폼 운영자(platform_admins) 여부 — 전 회사 슈퍼권한
+// 신규 회원가입이 소속 신청할 기본 회사(테넌트). 단일회사 배포용 설정값 — 추후 온보딩에서 동적화.
+const DEFAULT_COMPANY_ID="dd68fcdc-af8a-4399-8636-dfe3c858ee9f";  // 대찬인생
+let MEMBERSHIPS=[];            // 관리자 화면용: 현재 회사의 전체 멤버십 목록
 let curModule="home";    // 현재 활성 모듈 (접속 시 홈 대시보드부터 시작)
 let openEmpId=null, empEdit=false, edPanel="record";
 let nextEmpId=1;
@@ -1590,7 +1593,8 @@ function isAdmin(){
 function findUser(email){ if(!email) return null; return USERS.find(u=>u.email&&u.email.toLowerCase()===email.toLowerCase())||null; }
 function hasPerm(mod){
   if(isAdmin()) return true;                       // 관리자는 전부
-  if(["develop","evaluate","reward"].includes(mod)) return true;  // 추후개발 탭은 접근 자체는 허용(내용은 안내문)
+  if(mod==="reward") return canViewHrSensitive();  // 보상(급여·연말정산)은 급여 권한자만
+  if(["develop","evaluate"].includes(mod)) return false;  // 추후개발 메뉴는 관리자에게만 노출(위에서 처리)
   // 신 구조(정본): 활성 멤버십의 permissions
   if(CURRENT_MEMBERSHIP){
     if(CURRENT_MEMBERSHIP.status!=="active") return false;         // 승인(active) 전이면 권한 없음
@@ -1654,6 +1658,10 @@ function applyPerms(){
   const retainVisible = hasPerm("employees")||hasPerm("labor");
   const aEl=document.querySelector('.gnb-item[data-axis="acquire"]'); if(aEl) aEl.style.display=acquireVisible?"":"none";
   const rEl=document.querySelector('.gnb-item[data-axis="retain"]'); if(rEl) rEl.style.display=retainVisible?"":"none";
+  // 개발·평가(추후개발)는 관리자에게만, 보상(급여)은 급여 권한자에게만 표시
+  const devEl=document.querySelector('.gnb-item[data-axis="develop"]'); if(devEl) devEl.style.display=hasPerm("develop")?"":"none";
+  const evEl=document.querySelector('.gnb-item[data-axis="evaluate"]'); if(evEl) evEl.style.display=hasPerm("evaluate")?"":"none";
+  const rwEl=document.querySelector('.gnb-item[data-axis="reward"]'); if(rwEl) rwEl.style.display=hasPerm("reward")?"":"none";
   // 관리자 메뉴
   const adminEl=document.getElementById("gnbAdmin");
   if(adminEl) adminEl.style.display=isAdmin()?"":"none";
@@ -1700,6 +1708,11 @@ function showLogin(){
   document.getElementById("loginTitle").textContent="e-HRIS 로그인";
   document.getElementById("loginSub").textContent="계속하려면 로그인하세요";
 }
+// 현재 로그인 세션의 auth user id 조회
+async function getMyUid(){
+  try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:await sbHeaders()}); if(r.ok){ const d=await r.json(); return d.id||(d.user&&d.user.id)||null; } }catch(e){}
+  return null;
+}
 async function doSignup(){
   const btn=document.getElementById("suBtn");
   const err=document.getElementById("suErr");
@@ -1707,13 +1720,14 @@ async function doSignup(){
   const email=document.getElementById("suEmail").value.trim();
   const pw=document.getElementById("suPw").value;
   const pw2=document.getElementById("suPw2").value;
-  err.className="login-err"; 
+  err.className="login-err";
   if(!name||!email||!pw){ err.textContent="이름·이메일·비밀번호를 모두 입력하세요."; return; }
   if(pw.length<6){ err.textContent="비밀번호는 6자 이상이어야 합니다."; return; }
   if(pw!==pw2){ err.textContent="비밀번호가 일치하지 않습니다."; return; }
+  const restore=(msg,ok)=>{ btn.disabled=false; btn.textContent="회원가입 신청"; err.className=ok?"login-ok":"login-err"; err.textContent=msg; };
   btn.disabled=true; btn.textContent="신청 중…"; err.textContent="";
   // 1) Supabase Auth 계정 생성
-  let authOk=false, authMsg="";
+  let authOk=false, authMsg="", alreadyExists=false;
   try{
     const res=await fetch(`${SUPABASE_URL}/auth/v1/signup`,{
       method:"POST", headers:{ "apikey":SUPABASE_KEY, "Content-Type":"application/json" },
@@ -1721,22 +1735,42 @@ async function doSignup(){
     });
     const data=await res.json().catch(()=>({}));
     if(res.ok){ authOk=true; }
-    else { authMsg=(data&&(data.msg||data.error_description||data.message))||("가입 실패 ("+res.status+")"); 
-      // 이미 가입된 계정이면 신청 기록만 남기도록 계속 진행
-      if(/already|registered|exists/i.test(authMsg)) authOk=true;
+    else { authMsg=(data&&(data.msg||data.error_description||data.message))||("가입 실패 ("+res.status+")");
+      if(/already|registered|exists/i.test(authMsg)){ authOk=true; alreadyExists=true; }   // 이미 있으면 신청만 이어서
     }
   }catch(e){ authMsg="네트워크 오류"; }
-  if(!authOk){ btn.disabled=false; btn.textContent="회원가입 신청"; err.textContent=authMsg; return; }
-  // 2) users 목록에 신청 기록 추가 (익명 키로 읽고, 갱신)
-  await loadUsersOnly();
-  let u=findUser(email);
-  if(u){ u.name=name; if(u.status!=="approved") u.status="pending"; }
-  else { u=blankUser(email,name); USERS.push(u); }
-  // 저장 (비로그인 상태이므로 익명 키로 app_state 업데이트 시도)
-  await cloudPushUsers();
-  btn.disabled=false; btn.textContent="회원가입 신청";
-  err.className="login-ok";
-  err.textContent="✓ 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.";
+  if(!authOk){ restore(authMsg,false); return; }
+  // 2) 본인 자격으로 신청하려면 로그인(세션 확보)
+  const si=await signIn(email,pw);
+  if(!si.ok){ restore(alreadyExists?"이미 가입된 이메일입니다. 로그인해 주세요.":"계정은 생성되었습니다. 잠시 후 로그인해 신청을 완료해 주세요.", false); return; }
+  const uid=await getMyUid();
+  if(!uid){ saveSession(null); restore("신청 처리 중 오류(사용자 확인 실패). 다시 시도해 주세요.", false); return; }
+  // 3) 이미 멤버십이 있는지 확인 (재신청 방지)
+  let already=null;
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships?user_id=eq.${uid}&company_id=eq.${DEFAULT_COMPANY_ID}&select=id,status`,{headers:await sbHeaders()});
+    if(r.ok){ const rows=await r.json(); if(rows.length) already=rows[0]; }
+  }catch(e){}
+  // 4) 신청 INSERT 또는 상태 안내
+  let okMsg="✓ 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.";
+  if(already){
+    if(already.status==="active") okMsg="이미 승인된 계정입니다. 로그인해 주세요.";
+    else if(already.status==="rejected") okMsg="이 계정은 접근이 거절된 상태입니다. 관리자에게 문의하세요.";
+    else okMsg="이미 신청이 접수되어 관리자 승인 대기 중입니다.";
+  } else {
+    try{
+      const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships`,{
+        method:"POST",
+        headers: await sbHeaders({ "Prefer":"return=minimal" }),
+        body: JSON.stringify({ company_id:DEFAULT_COMPANY_ID, user_id:uid, name, role:"member", status:"pending",
+          permissions:{ats:false,contract:false,employees:false,labor:false,hrPayroll:false} })
+      });
+      if(!r.ok){ const d=await r.json().catch(()=>({})); saveSession(null); restore("신청 등록 실패 ("+r.status+"). "+((d&&(d.message||d.hint))||""), false); return; }
+    }catch(e){ saveSession(null); restore("신청 등록 중 네트워크 오류.", false); return; }
+  }
+  // 5) 승인 전이므로 로그인 상태는 해제
+  saveSession(null);
+  restore(okMsg, true);
   document.getElementById("suName").value=""; document.getElementById("suEmail").value="";
   document.getElementById("suPw").value=""; document.getElementById("suPw2").value="";
 }
@@ -2995,7 +3029,7 @@ function goModule(mod){
   else if(mod==="contract") renderContractList();
   else if(mod==="reward") renderPayrollList();
   else if(mod==="company") renderCompanyInfo();
-  else if(mod==="admin") renderAdmin();
+  else if(mod==="admin"){ renderAdmin(); loadMemberships().then(renderAdmin); }
 }
 
 /* ── 홈 대시보드 ── */
@@ -3106,25 +3140,44 @@ function companyInfoFull(){
   return COMPANY_INFO && COMPANY_INFO.name ? COMPANY_INFO : blankCompanyInfo();
 }
 
+// 관리자용: 현재 회사의 전체 멤버십을 읽어온다 (RLS: 회사관리자는 회사 멤버십 조회 가능)
+async function loadMemberships(){
+  MEMBERSHIPS=[];
+  const cid=CURRENT_COMPANY_ID||DEFAULT_COMPANY_ID;
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships?company_id=eq.${cid}&select=id,user_id,name,role,status,permissions,requested_at,approved_at&order=requested_at.asc`,{headers:await sbHeaders()});
+    if(r.ok) MEMBERSHIPS=await r.json();
+  }catch(e){}
+  return MEMBERSHIPS;
+}
+async function patchMembership(id, patch){
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships?id=eq.${id}`,{
+      method:"PATCH", headers: await sbHeaders({ "Prefer":"return=minimal" }), body: JSON.stringify(patch)
+    });
+    return r.ok;
+  }catch(e){ return false; }
+}
 function renderAdmin(){
   if(!isAdmin()){ document.getElementById("adminBody").innerHTML="<div class='emp-empty'>관리자만 접근할 수 있습니다.</div>"; return; }
-  const pending=USERS.filter(u=>u.status==="pending");
-  const others=USERS.filter(u=>u.status!=="pending");
+  const pending=MEMBERSHIPS.filter(m=>m.status==="pending");
+  const others=MEMBERSHIPS.filter(m=>m.status!=="pending");
   // 대기 배지 갱신
   const badge=document.getElementById("pendingBadge");
   if(badge){ badge.textContent=pending.length; badge.style.display=pending.length?"inline-block":"none"; }
+  const idTag=(uid)=>`ID ${esc(String(uid||"").slice(0,8))}…`;
 
   let html="";
   // 승인 대기
   html+=`<div class="rc-sec"><h3>승인 대기 <span class="badge">${pending.length}</span></h3>`;
   if(!pending.length){ html+=`<div style="font-size:12.5px;color:var(--faint);padding:6px 2px">대기 중인 가입 신청이 없습니다.</div>`; }
   else {
-    html+=pending.map(u=>`<div class="user-row pending">
-      <div class="user-info"><div class="user-name">${esc(u.name||"(이름없음)")}</div><div class="user-email">${esc(u.email)}</div>
-        <div class="user-meta">신청: ${esc((u.requestedAt||"").slice(0,10))}</div></div>
+    html+=pending.map(m=>`<div class="user-row pending">
+      <div class="user-info"><div class="user-name">${esc(m.name||"(이름없음)")}</div><div class="user-email">${idTag(m.user_id)}</div>
+        <div class="user-meta">신청: ${esc((m.requested_at||"").slice(0,10))}</div></div>
       <div class="user-actions">
-        <button class="btn" onclick="approveUser('${esc(u.email)}')">✓ 승인</button>
-        <button class="btn ghost" style="color:#6B4A3A" onclick="rejectUser('${esc(u.email)}')">거절</button>
+        <button class="btn" onclick="approveMembership('${esc(m.id)}')">✓ 승인</button>
+        <button class="btn ghost" style="color:#6B4A3A" onclick="rejectMembership('${esc(m.id)}')">거절</button>
       </div>
     </div>`).join("");
   }
@@ -3135,20 +3188,25 @@ function renderAdmin(){
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">각 사용자가 접근할 수 있는 메뉴를 체크로 설정합니다. 변경은 즉시 저장됩니다.</div>`;
   if(!others.length){ html+=`<div style="font-size:12.5px;color:var(--faint);padding:6px 2px">아직 승인된 사용자가 없습니다.</div>`; }
   else {
-    html+=others.map(u=>{
-      const isRej=u.status==="rejected";
-      const permChecks=[...ALL_PERMS, ...SENSITIVE_PERMS].map(p=>`<label class="perm-chk ${(u.perms&&u.perms[p])?'on':''}">
-        <input type="checkbox" ${(u.perms&&u.perms[p])?"checked":""} ${isRej?"disabled":""} onchange="setUserPerm('${esc(u.email)}','${p}',this.checked)">
+    html+=others.map(m=>{
+      const isRej=m.status==="rejected";
+      const isOwner=(m.role==="owner"||m.role==="admin");
+      const perms=m.permissions||{};
+      const permChecks=[...ALL_PERMS, ...SENSITIVE_PERMS].map(p=>`<label class="perm-chk ${perms[p]?'on':''}">
+        <input type="checkbox" ${perms[p]?"checked":""} ${(isRej||isOwner)?"disabled":""} onchange="setMembershipPerm('${esc(m.id)}','${p}',this.checked)">
         ${PERM_LABELS[p]}</label>`).join("");
+      const tag=isOwner?'<span style="color:#5A3A2B;font-size:10.5px;font-weight:800">· 관리자</span>'
+                :(isRej?'<span style="color:#6B4A3A;font-size:10.5px;font-weight:800">· 거절됨</span>'
+                :'<span style="color:#5A3A2B;font-size:10.5px;font-weight:800">· 승인됨</span>');
       return `<div class="user-row ${isRej?'rejected':'approved'}">
         <div class="user-info">
-          <div class="user-name">${esc(u.name||"(이름없음)")} ${isRej?'<span style="color:#6B4A3A;font-size:10.5px;font-weight:800">· 거절됨</span>':'<span style="color:#5A3A2B;font-size:10.5px;font-weight:800">· 승인됨</span>'}</div>
-          <div class="user-email">${esc(u.email)}</div>
+          <div class="user-name">${esc(m.name||"(이름없음)")} ${tag}</div>
+          <div class="user-email">${idTag(m.user_id)}</div>
           <div class="perm-row">${permChecks}</div>
         </div>
         <div class="user-actions">
-          ${isRej?`<button class="btn" onclick="approveUser('${esc(u.email)}')">다시 승인</button>`:`<button class="btn ghost" style="color:#6B4A3A" onclick="rejectUser('${esc(u.email)}')">접근 차단</button>`}
-          <button class="btn ghost" onclick="deleteUser('${esc(u.email)}')">삭제</button>
+          ${isOwner?"":(isRej?`<button class="btn" onclick="approveMembership('${esc(m.id)}')">다시 승인</button>`:`<button class="btn ghost" style="color:#6B4A3A" onclick="rejectMembership('${esc(m.id)}')">접근 차단</button>`)}
+          ${isOwner?"":`<button class="btn ghost" onclick="deleteMembership('${esc(m.id)}')">삭제</button>`}
         </div>
       </div>`;
     }).join("");
@@ -3156,31 +3214,38 @@ function renderAdmin(){
   html+=`</div>`;
   document.getElementById("adminBody").innerHTML=html;
 }
-function approveUser(email){
-  const u=findUser(email); if(!u) return;
-  u.status="approved"; u.approvedAt=new Date().toISOString();
+async function approveMembership(id){
+  const m=MEMBERSHIPS.find(x=>String(x.id)===String(id)); if(!m) return;
   // 처음 승인 시 기본 권한: ATS만 부여 (관리자가 추가로 열어줌)
-  if(!u.perms) u.perms={ats:false,contract:false,employees:false,labor:false,hrPayroll:false};
-  if(u.perms.hrPayroll===undefined) u.perms.hrPayroll=false;
-  if(!ALL_PERMS.some(p=>u.perms[p])) u.perms.ats=true;
-  saveUsers(); renderAdmin();
+  let perms=Object.assign({ats:false,contract:false,employees:false,labor:false,hrPayroll:false}, m.permissions||{});
+  if(!ALL_PERMS.some(p=>perms[p]) && !perms.hrPayroll){ perms.ats=true; }
+  const ok=await patchMembership(id, { status:"active", approved_at:new Date().toISOString(), permissions:perms });
+  if(!ok) alert("승인 저장에 실패했습니다. 회사관리자 권한·네트워크를 확인하세요.");
+  await loadMemberships(); renderAdmin();
 }
-function rejectUser(email){
-  const u=findUser(email); if(!u) return;
-  if(!confirm(`${u.name||email} 님의 접근을 차단(거절)할까요?`)) return;
-  u.status="rejected"; saveUsers(); renderAdmin();
+async function rejectMembership(id){
+  const m=MEMBERSHIPS.find(x=>String(x.id)===String(id)); if(!m) return;
+  if(!confirm(`${m.name||"이 사용자"} 님의 접근을 차단(거절)할까요?`)) return;
+  const ok=await patchMembership(id, { status:"rejected" });
+  if(!ok) alert("저장에 실패했습니다. 다시 시도해 주세요.");
+  await loadMemberships(); renderAdmin();
 }
-function deleteUser(email){
-  const u=findUser(email); if(!u) return;
-  if(!confirm(`${u.name||email} 님의 가입 기록을 삭제할까요?\n(로그인 계정 자체는 남아있으며, 재신청 가능합니다)`)) return;
-  USERS=USERS.filter(x=>x!==u); saveUsers(); renderAdmin();
+async function deleteMembership(id){
+  const m=MEMBERSHIPS.find(x=>String(x.id)===String(id)); if(!m) return;
+  if(!confirm(`${m.name||"이 사용자"} 님의 소속(멤버십)을 삭제할까요?\n(로그인 계정 자체는 남아있으며, 재신청 가능합니다)`)) return;
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships?id=eq.${id}`,{ method:"DELETE", headers: await sbHeaders({ "Prefer":"return=minimal" }) });
+    if(!r.ok) alert("삭제에 실패했습니다. 다시 시도해 주세요.");
+  }catch(e){ alert("삭제 중 오류가 발생했습니다."); }
+  await loadMemberships(); renderAdmin();
 }
-function setUserPerm(email,perm,val){
-  const u=findUser(email); if(!u) return;
-  u.perms=u.perms||{ats:false,contract:false,employees:false,labor:false,hrPayroll:false};
-  u.perms[perm]=val; saveUsers();
-  // 체크박스 라벨 하이라이트만 갱신
-  renderAdmin();
+async function setMembershipPerm(id, perm, val){
+  const m=MEMBERSHIPS.find(x=>String(x.id)===String(id)); if(!m) return;
+  const perms=Object.assign({ats:false,contract:false,employees:false,labor:false,hrPayroll:false}, m.permissions||{});
+  perms[perm]=val; m.permissions=perms;   // 낙관적 갱신
+  const ok=await patchMembership(id, { permissions:perms });
+  if(!ok) alert("권한 저장에 실패했습니다. 다시 시도해 주세요.");
+  await loadMemberships(); renderAdmin();
 }
 
 /* ── 임직원 데이터 유틸 ── */
