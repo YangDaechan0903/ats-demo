@@ -1667,13 +1667,23 @@ async function doLogin(){
   btn.disabled=true; btn.textContent="로그인 중…"; err.textContent="";
   const r=await signIn(email,pw);
   if(!r.ok){ btn.disabled=false; btn.textContent="로그인"; err.textContent=r.msg; return; }
-  // 관리자면 승인 확인 없이 통과
+  // 로그인 성공 → 회사 컨텍스트·권한 확정(memberships·platform_admins)
+  await resolveCompanyContext();
+  // 관리자(플랫폼 운영자/owner/admin)면 승인 확인 없이 통과
   if(!isAdmin()){
-    await loadUsersOnly();
-    const u=findUser(email);
-    if(!u){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입 신청 기록이 없습니다. 회원가입을 먼저 진행하세요."; saveSession(null); return; }
-    if(u.status==="pending"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="아직 관리자 승인 대기 중입니다."; saveSession(null); return; }
-    if(u.status==="rejected"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입이 거절되었습니다. 관리자에게 문의하세요."; saveSession(null); return; }
+    if(CURRENT_MEMBERSHIP){
+      // 신 구조(정본): 멤버십 상태로 판정
+      if(CURRENT_MEMBERSHIP.status==="pending"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="아직 관리자 승인 대기 중입니다."; saveSession(null); return; }
+      if(CURRENT_MEMBERSHIP.status==="rejected"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입이 거절되었습니다. 관리자에게 문의하세요."; saveSession(null); return; }
+      // status==="active" → 통과
+    } else {
+      // 하위호환: 아직 멤버십이 없는 계정 → 옛 app_state.users 확인
+      await loadUsersOnly();
+      const u=findUser(email);
+      if(!u){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입 신청 기록이 없습니다. 회원가입을 먼저 진행하세요."; saveSession(null); return; }
+      if(u.status==="pending"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="아직 관리자 승인 대기 중입니다."; saveSession(null); return; }
+      if(u.status==="rejected"){ btn.disabled=false; btn.textContent="로그인"; err.textContent="가입이 거절되었습니다. 관리자에게 문의하세요."; saveSession(null); return; }
+    }
   }
   btn.disabled=false; btn.textContent="로그인";
   await startApp();
