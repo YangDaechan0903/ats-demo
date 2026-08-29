@@ -13,7 +13,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
     background:var(--bg);color:var(--ink);height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
-  .app{display:flex;height:100vh}
+  .app{display:flex;height:calc(100vh - 46px)}
 
   /* ── left: job list ── */
   .side{width:248px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);
@@ -421,6 +421,15 @@
   .gnb-menu button.sub-on{background:var(--primary-soft);color:var(--primary);font-weight:800}
   .gnb-menu .mlabel{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--faint);padding:6px 11px 3px;text-transform:uppercase}
   .gnb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  /* 회사(계열사) 전환 드롭다운 */
+  .company-switcher{display:flex;align-items:center;margin-left:6px}
+  .company-switcher .company-select{background:rgba(255,255,255,.10);color:#fff;border:1px solid rgba(255,255,255,.25);
+    border-radius:8px;font:inherit;font-size:12.5px;font-weight:700;padding:5px 26px 5px 10px;cursor:pointer;
+    -webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23fff' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 9px center}
+  .company-switcher .company-select option{color:#3a2b23;background:#fff}
+  .company-switcher .company-badge{color:#EBD9CC;font-size:12.5px;font-weight:700;padding:4px 8px;background:rgba(255,255,255,.06);border-radius:8px}
   .gnb-user{color:#BBBBBB;font-size:11.5px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .gnb-logout{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#DDDDDD;
     border-radius:7px;padding:6px 10px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
@@ -779,6 +788,7 @@
 <div class="hris-shell" id="hrisShell" style="display:none">
 <nav class="gnb" id="gnb">
   <div class="brand" onclick="goModule('home')" style="cursor:pointer" title="홈으로 이동"><span class="g-logo">H</span>e-HRIS</div>
+  <span id="companySwitcher" class="company-switcher" style="display:none"></span>
 
   <div class="gnb-item" data-axis="acquire">
     <button class="gnb-btn" onclick="toggleAxis('acquire')">확보 <span style="font-size:9px">▾</span></button>
@@ -1333,6 +1343,7 @@ const STORE = "ats_jobs_v1";          // 로컬 캐시(파일 포함 전체 보�
 const EMP_STORE = "hris_employees_v1"; // 임직원 로컬 캐시
 const PAY_STORE = "hris_payroll_v1";   // 급여관리(보상) 로컬 캐시
 const COMPANY_STORE = "hris_company_v1"; // 사업자정보 로컬 캐시
+const COMPANY_SEL_STORE = "hris_selected_company_v1"; // 마지막으로 선택한 회사(계열사) id
 const TOKEN_STORE = "ats_session_v1"; // 로그인 세션 보관
 let cloudOK = false;
 let session = null;                   // {access_token, refresh_token, expires_at, email}
@@ -1420,6 +1431,7 @@ async function signIn(email, password){
 function signOut(){
   saveSession(null);
   try{ localStorage.removeItem(STORE); }catch(e){}   // 로컬 캐시도 비워 남의 기기에 데이터가 남지 않게
+  try{ localStorage.removeItem(COMPANY_SEL_STORE); }catch(e){}
   location.reload();
 }
 
@@ -1515,30 +1527,65 @@ async function load(){
 }
 // 로그인 후: 내가 속한 회사(테넌트)를 확정한다. 단일회사 UX이므로 보통 활성 멤버십 1개.
 // 멤버십이 없으면 CURRENT_COMPANY_ID=null → load()는 로컬/seed로 폴백(증분2 온보딩·이전에서 처리).
-async function resolveCompanyContext(){
-  CURRENT_COMPANY_ID=null; CURRENT_COMPANY=null; CURRENT_MEMBERSHIP=null; IS_PLATFORM_ADMIN=false;
+async function resolveCompanyContext(preferredCompanyId){
+  CURRENT_COMPANY_ID=null; CURRENT_COMPANY=null; CURRENT_MEMBERSHIP=null; IS_PLATFORM_ADMIN=false; MY_MEMBERSHIPS=[];
   // 플랫폼 운영자 여부 (RLS: 본인 행만 반환 → 행이 있으면 platform_admin)
   try{
     const pRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_admins?select=user_id`, { headers: await sbHeaders() });
     if(pRes.ok){ const rows=await pRes.json(); IS_PLATFORM_ADMIN = Array.isArray(rows) && rows.length>0; }
   }catch(e){ /* 조회 실패 시 아래 이메일 하위호환으로 보완 */ }
+  // 내가 속한 활성 멤버십 전체 (여러 회사=계열사)
+  let mems=[];
   try{
-    // RLS로 본인 멤버십만 조회됨
-    const mRes = await fetch(`${SUPABASE_URL}/rest/v1/memberships?select=company_id,role,permissions,status,name&order=requested_at.asc`, { headers: await sbHeaders() });
-    if(mRes.ok){
-      const rows = await mRes.json();
-      const pick = rows.find(r=>r.status==="active") || rows[0] || null;   // 활성 우선
-      if(pick){ CURRENT_MEMBERSHIP=pick; CURRENT_COMPANY_ID=pick.company_id; }
-    }
-  }catch(e){ /* 네트워크 오류 → null 유지 */ }
-  // 회사 행(이름·features·company_info) 로드
-  if(CURRENT_COMPANY_ID){
+    const mRes = await fetch(`${SUPABASE_URL}/rest/v1/memberships?select=company_id,role,permissions,status,name&status=eq.active&order=requested_at.asc`, { headers: await sbHeaders() });
+    if(mRes.ok){ mems = await mRes.json(); }
+  }catch(e){ /* 네트워크 오류 → 빈 목록 */ }
+  // 각 회사의 이름·정보 로드 (드롭다운 표시 + 현재 회사 컨텍스트)
+  if(mems.length){
+    const ids = mems.map(m=>m.company_id).filter(Boolean);
+    let comps=[];
     try{
-      const cRes = await fetch(`${SUPABASE_URL}/rest/v1/companies?id=eq.${CURRENT_COMPANY_ID}&select=id,name,biz_no,plan,features,company_info`, { headers: await sbHeaders() });
-      if(cRes.ok){ const rows=await cRes.json(); if(rows.length) CURRENT_COMPANY=rows[0]; }
+      const cRes = await fetch(`${SUPABASE_URL}/rest/v1/companies?id=in.(${ids.join(",")})&select=id,name,biz_no,plan,features,company_info`, { headers: await sbHeaders() });
+      if(cRes.ok) comps = await cRes.json();
     }catch(e){}
+    mems.forEach(m=>{ m._company = comps.find(x=>String(x.id)===String(m.company_id)) || null; m._name = m._company ? m._company.name : m.company_id; });
+    MY_MEMBERSHIPS = mems;
+    // 선택할 회사 결정: 인자 > 저장된 선택 > 첫 번째
+    let saved=null; try{ saved=localStorage.getItem(COMPANY_SEL_STORE); }catch(e){}
+    let chosen = null;
+    const want = preferredCompanyId || saved;
+    if(want) chosen = mems.find(m=>String(m.company_id)===String(want));
+    if(!chosen) chosen = mems[0];
+    if(chosen){ CURRENT_MEMBERSHIP=chosen; CURRENT_COMPANY_ID=chosen.company_id; CURRENT_COMPANY=chosen._company; }
   }
   return CURRENT_COMPANY_ID;
+}
+// 회사(계열사) 전환: 선택한 회사로 컨텍스트를 바꾸고 데이터·화면을 다시 로드
+async function switchCompany(companyId){
+  const m = MY_MEMBERSHIPS.find(x=>String(x.company_id)===String(companyId));
+  if(!m || String(companyId)===String(CURRENT_COMPANY_ID)) { renderCompanySwitcher(); return; }
+  CURRENT_MEMBERSHIP=m; CURRENT_COMPANY_ID=m.company_id; CURRENT_COMPANY=m._company;
+  try{ localStorage.setItem(COMPANY_SEL_STORE, companyId); }catch(e){}
+  curUser = { name:m.name||"", status:m.status, perms:(m.permissions||{}) };
+  await load();
+  applyPerms();
+  curJob = JOBS[0] ? JOBS[0].id : null;
+  computeIds();
+  render();
+  renderCompanySwitcher();
+  goModule("home");
+}
+// 상단 회사(계열사) 전환 드롭다운 렌더
+function renderCompanySwitcher(){
+  const el=document.getElementById("companySwitcher"); if(!el) return;
+  if(!MY_MEMBERSHIPS || MY_MEMBERSHIPS.length===0){ el.style.display="none"; el.innerHTML=""; return; }
+  el.style.display="";
+  if(MY_MEMBERSHIPS.length===1){
+    el.innerHTML=`<span class="company-badge">${esc(MY_MEMBERSHIPS[0]._name||"")}</span>`;
+    return;
+  }
+  const opts=MY_MEMBERSHIPS.map(m=>`<option value="${esc(m.company_id)}" ${String(m.company_id)===String(CURRENT_COMPANY_ID)?"selected":""}>${esc(m._name||"회사")}</option>`).join("");
+  el.innerHTML=`<select class="company-select" onchange="switchCompany(this.value)" title="회사(계열사) 전환">${opts}</select>`;
 }
 // 로그인 전, 승인 여부 확인을 위해 users만 읽기 (app_state 유지 — 증분2에서 memberships로 이전)
 async function loadUsersOnly(){
@@ -1579,10 +1626,12 @@ let CURRENT_COMPANY_ID=null;   // 현재 사용자가 속한 회사 id (company_
 let CURRENT_COMPANY=null;      // companies 행 {id,name,biz_no,plan,features,company_info}
 let CURRENT_MEMBERSHIP=null;   // 내 memberships 행 {company_id,role,permissions,status,name} — 권한판정 정본
 let IS_PLATFORM_ADMIN=false;   // 플랫폼 운영자(platform_admins) 여부 — 전 회사 슈퍼권한
+let MY_MEMBERSHIPS=[];         // 내가 속한 활성 회사(계열사)들 — 전환 드롭다운용
 // 신규 회원가입이 소속 신청할 기본 회사(테넌트). 단일회사 배포용 설정값 — 추후 온보딩에서 동적화.
 const DEFAULT_COMPANY_ID="dd68fcdc-af8a-4399-8636-dfe3c858ee9f";  // 대찬인생
 let MEMBERSHIPS=[];            // 관리자 화면용: 현재 회사의 전체 멤버십 목록
 let COMPANIES=[];              // 플랫폼 운영자 화면용: 회사(테넌트) 목록
+let COMPANY_OWNERS={};         // company_id -> [owner 멤버십...] (관리자 표시용)
 let curModule="home";    // 현재 활성 모듈 (접속 시 홈 대시보드부터 시작)
 let openEmpId=null, empEdit=false, edPanel="record";
 let nextEmpId=1;
@@ -1658,6 +1707,7 @@ async function startApp(){
     curUser=null;
   }
   applyPerms();
+  renderCompanySwitcher();
   curJob = JOBS[0] ? JOBS[0].id : null;
   computeIds();
   render();
@@ -3051,7 +3101,7 @@ function goModule(mod){
   else if(mod==="reward") renderPayrollList();
   else if(mod==="company") renderCompanyInfo();
   else if(mod==="admin"){ renderAdmin(); loadMemberships().then(renderAdmin); }
-  else if(mod==="platform"){ renderPlatform(); loadCompanies().then(renderPlatform); }
+  else if(mod==="platform"){ renderPlatform(); Promise.all([loadCompanies(), loadCompanyOwners()]).then(renderPlatform); }
 }
 
 /* ── 홈 대시보드 ── */
@@ -3106,6 +3156,7 @@ function renderHome(){
    여기 입력된 값은 근로계약서·원천징수영수증·원천징수이행상황신고서·임금대장 등
    회사명이 필요한 모든 문서에 자동으로 반영된다(companyNameGuess/companyInfoFull 참고). */
 let companyEdit=false;
+let subEditOpen=false;   // 계열사 등록 폼 열림 여부
 function toggleCompanyEdit(){
   if(!isAdmin()){ alert("사업자정보 수정은 관리자만 가능합니다."); return; }
   companyEdit=!companyEdit; renderCompanyInfo();
@@ -3122,6 +3173,7 @@ function renderCompanyInfo(){
   document.getElementById("ciEditBtn").textContent=on?"완료":"✎ 수정";
   const c=COMPANY_INFO=COMPANY_INFO||blankCompanyInfo();
   const f=(key,label,ph,extra)=>`<div class="fld"${extra||""}><label>${label}</label><input ${D(on)} value="${val(c[key])}" onchange="companyFieldEdit('${key}',this.value)" placeholder="${ph||""}"></div>`;
+  const sf=(key,label,ph)=>`<div class="fld"><label>${label}</label><input id="sub_${key}" type="text" value="" placeholder="${ph||''}"></div>`;
   body.innerHTML=`
     <div class="rc-sec"><h3>기본정보</h3>
       <div class="fg c3">
@@ -3155,7 +3207,116 @@ function renderCompanyInfo(){
       💡 이 정보는 근로계약서의 "사용자(갑)" 란, 근로소득원천징수영수증의 "징수의무자" 란, 원천징수이행상황신고서·임금대장의 회사명 표시에 자동으로 반영됩니다.
       ${(!c.name)?`<br>⚠ 아직 회사명이 입력되지 않았습니다. 관리자가 먼저 입력해주세요.`:""}
     </div>
+    ${isAdmin()?`
+    <div class="rc-sec"><h3>계열사(사업장) 관리</h3>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">사업자번호가 다른 계열사를 추가하면, 상단 <b>회사 전환</b> 메뉴에서 오가며 각각 따로 관리할 수 있습니다. 임직원·급여·근로계약은 계열사별로 <b>완전히 분리</b>됩니다.</div>
+      <div style="margin-bottom:14px">
+        ${(MY_MEMBERSHIPS||[]).map(m=>`<div style="padding:8px 12px;border:1px solid #E7DACE;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-size:13px">
+          <span>${esc(m._name||"(이름없음)")} ${String(m.company_id)===String(CURRENT_COMPANY_ID)?'<span style="color:#5A3A2B;font-weight:800;font-size:11px">· 현재 보는 중</span>':''}</span>
+          ${String(m.company_id)!==String(CURRENT_COMPANY_ID)?`<span style="display:flex;gap:6px">
+            <button class="btn ghost" style="font-size:11px;padding:4px 12px" onclick="switchCompany('${esc(m.company_id)}')">이동</button>
+            <button class="btn ghost" style="font-size:11px;padding:4px 12px;color:#8B3A2F" onclick="deleteSubsidiary('${esc(m.company_id)}', ${JSON.stringify(m._name||"")})">삭제</button>
+          </span>`:''}
+        </div>`).join("")}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:${subEditOpen?'14px':'0'}">
+        <button class="btn" onclick="toggleSubForm()">${subEditOpen?'✕ 닫기':'＋ 새 계열사 등록'}</button>
+        <span style="font-size:11px;color:var(--faint)">계열사도 독립 사업자이므로, 등록 시 사업자정보를 함께 입력합니다.</span>
+      </div>
+      ${subEditOpen?`
+      <div style="border:1px dashed #D9C9BC;border-radius:10px;padding:16px;background:#FCFAF7">
+        <div class="fg c3">
+          ${sf('name','회사명(상호) *','예: (주)두둥물류')}
+          ${sf('ceoName','대표자','예: 정수연')}
+          <div class="fld"><label>법인/개인구분</label><select id="sub_bizType"><option>법인</option><option>개인</option></select></div>
+          ${sf('bizRegNo','사업자등록번호','예: 520-81-02364')}
+          ${sf('corpRegNo','법인등록번호','예: 110111-8322424')}
+          ${sf('phone','사업장 전화번호','예: 02-1234-5678')}
+        </div>
+        <div class="fg"><div class="fld full"><label>사업장주소</label><input id="sub_addr" type="text" value="" placeholder="예: 서울 강남구 학동로 208"></div></div>
+        <div class="fg c3">
+          ${sf('addrDetail','상세주소','예: 4층')}
+          ${sf('industryCode','업종코드','예: 743002')}
+          ${sf('taxOffice','관할세무서','예: 강남세무서')}
+        </div>
+        <div class="fg c3">
+          ${sf('bizCategory','업태','예: 전문, 과학 및 기술 서비스업')}
+          ${sf('bizItem','종목','예: 광고 대행업')}
+        </div>
+        <div class="fg c3">
+          <div class="fld"><label>설립년월일</label><input id="sub_estDate" type="date" value=""></div>
+          <div class="fld"><label>개업년월일</label><input id="sub_openDate" type="date" value=""></div>
+        </div>
+        <div style="margin-top:8px"><button class="btn" onclick="addSubsidiary()">계열사 등록</button></div>
+      </div>
+      `:''}
+      <div id="subMsg" style="font-size:12px;margin-top:10px"></div>
+    </div>
+    `:''}
   `;
+}
+function toggleSubForm(){ subEditOpen=!subEditOpen; renderCompanyInfo(); }
+// 계열사(회사) 등록 — 전체 사업자정보를 입력받아 새 회사로 만들고, 그 회사의 company_info에 저장
+async function addSubsidiary(){
+  const msg=document.getElementById("subMsg");
+  const g=id=>{ const el=document.getElementById("sub_"+id); return el?(el.value||"").trim():""; };
+  const info=Object.assign(blankCompanyInfo(), {
+    name:g('name'), ceoName:g('ceoName'),
+    bizType:(document.getElementById('sub_bizType')||{}).value||'법인',
+    bizRegNo:g('bizRegNo'), corpRegNo:g('corpRegNo'), phone:g('phone'),
+    addr:g('addr'), addrDetail:g('addrDetail'), industryCode:g('industryCode'), taxOffice:g('taxOffice'),
+    bizCategory:g('bizCategory'), bizItem:g('bizItem'), estDate:g('estDate'), openDate:g('openDate')
+  });
+  if(msg) msg.style.color="#8B3A2F";
+  if(!info.name){ if(msg) msg.textContent="회사명(상호)은 필수입니다."; return; }
+  const ownerName=(CURRENT_MEMBERSHIP&&CURRENT_MEMBERSHIP.name) || (curUser&&curUser.name) || "관리자";
+  if(msg){ msg.style.color="var(--muted)"; msg.textContent="등록 중…"; }
+  try{
+    // 1) 회사 생성 (본인 owner 자동 연결)
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/create_company`,{
+      method:"POST",
+      headers: await sbHeaders({ "Content-Type":"application/json" }),
+      body: JSON.stringify({ p_name:info.name, p_biz_no:info.bizRegNo||null, p_make_owner:true, p_owner_name:ownerName })
+    });
+    if(!r.ok){ const d=await r.json().catch(()=>({})); if(msg){ msg.style.color="#8B3A2F"; msg.textContent="등록 실패 ("+r.status+"). "+((d&&(d.message||d.hint||d.details))||""); } return; }
+    const newId=await r.json();   // rpc는 새 회사 uuid(scalar) 반환
+    // 2) 새 회사의 company_data에 사업자정보 저장
+    if(newId){
+      const payload={ jobs:[], employees:[], payrollRuns:[], companyInfo:info };
+      await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`,{
+        method:"POST",
+        headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
+        body: JSON.stringify({ company_id:newId, data:payload, updated_at:new Date().toISOString() })
+      });
+    }
+    // 3) 내 회사 목록 갱신(현재 회사는 유지)
+    subEditOpen=false;
+    await resolveCompanyContext(CURRENT_COMPANY_ID);
+    renderCompanySwitcher();
+    renderCompanyInfo();
+    adminToast("✓ 계열사 등록됨");
+    const m2=document.getElementById("subMsg"); if(m2){ m2.style.color="#4A7C59"; m2.textContent="✓ 계열사가 등록되었습니다. 상단 회사 전환 메뉴에서 이동할 수 있습니다."; }
+  }catch(e){ if(msg){ msg.style.color="#8B3A2F"; msg.textContent="네트워크 오류로 등록에 실패했습니다."; } }
+}
+// 계열사 삭제 — 현재 보는 회사는 삭제 불가(다른 회사로 이동 후). 회사명 재입력 확인.
+async function deleteSubsidiary(companyId, name){
+  if(String(companyId)===String(CURRENT_COMPANY_ID)){ alert("현재 보고 있는 회사는 삭제할 수 없습니다. 다른 회사로 이동한 뒤 삭제하세요."); return; }
+  const typed=prompt(`「${name}」 계열사를 삭제하려면 회사명을 그대로 입력하세요.\n(이 계열사의 임직원·급여·근로계약 등 데이터가 모두 삭제되며 되돌릴 수 없습니다)`);
+  if(typed===null) return;
+  if(typed.trim()!==(name||"").trim()){ alert("회사명이 일치하지 않아 취소했습니다."); return; }
+  try{
+    await fetch(`${SUPABASE_URL}/rest/v1/memberships?company_id=eq.${companyId}`,{method:"DELETE",headers:await sbHeaders({ "Prefer":"return=minimal" })});
+    await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${companyId}`,{method:"DELETE",headers:await sbHeaders({ "Prefer":"return=minimal" })});
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/companies?id=eq.${companyId}`,{method:"DELETE",headers:await sbHeaders({ "Prefer":"return=minimal" })});
+    if(r.ok){
+      adminToast("✓ 계열사 삭제됨");
+      await resolveCompanyContext(CURRENT_COMPANY_ID);
+      renderCompanySwitcher(); renderCompanyInfo();
+    } else {
+      const d=await r.json().catch(()=>({}));
+      alert("삭제 실패 ("+r.status+"). "+((d&&(d.message||d.hint))||"")+"\n(회사 관리자 삭제 정책이 적용됐는지 확인하세요)");
+    }
+  }catch(e){ alert("삭제 중 오류가 발생했습니다."); }
 }
 /* 다른 문서에서 회사 전체 정보가 필요할 때 사용 (원천징수영수증 징수의무자란 등) */
 function companyInfoFull(){
@@ -3298,6 +3459,15 @@ async function loadCompanies(){
   }catch(e){}
   return COMPANIES;
 }
+// 각 회사의 관리자(owner) 목록 — 플랫폼 운영자 슈퍼권한으로 전체 조회
+async function loadCompanyOwners(){
+  COMPANY_OWNERS={};
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships?role=eq.owner&select=company_id,name,status`,{headers:await sbHeaders()});
+    if(r.ok){ const rows=await r.json(); rows.forEach(m=>{ (COMPANY_OWNERS[m.company_id]=COMPANY_OWNERS[m.company_id]||[]).push(m); }); }
+  }catch(e){}
+  return COMPANY_OWNERS;
+}
 function renderPlatform(){
   const body=document.getElementById("platformBody"); if(!body) return;
   if(!IS_PLATFORM_ADMIN){ body.innerHTML="<div class='emp-empty'>플랫폼 운영자만 접근할 수 있습니다.</div>"; return; }
@@ -3320,21 +3490,44 @@ function renderPlatform(){
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">각 회사에 <b>관리자 계정</b>을 연결합니다. 먼저 Supabase의 Authentication에서 관리자 계정(이메일·비밀번호)을 만든 뒤, 그 계정의 <b>User UID</b>를 아래에 붙여넣으세요. 연결된 관리자는 자기 회사의 구성원 가입·권한을 직접 관리합니다.</div>`;
   if(!COMPANIES.length){ html+=`<div style="font-size:12.5px;color:var(--faint);padding:6px 2px">아직 생성된 회사가 없습니다.</div>`; }
   else {
-    html+=COMPANIES.map(c=>`<div class="user-row approved" style="align-items:flex-start">
+    html+=COMPANIES.map(c=>{
+      const owners=(COMPANY_OWNERS[c.id]||[]);
+      const ownerText = owners.length
+        ? owners.map(o=>esc(o.name||"이름없음")+(o.status!=="active"?"(비활성)":"")).join(", ")
+        : `<span style="color:#B08">미지정</span>`;
+      const isBase = (c.id===DEFAULT_COMPANY_ID);
+      return `<div class="user-row approved" style="align-items:flex-start">
       <div class="user-info">
-        <div class="user-name">${esc(c.name||"(이름없음)")}</div>
+        <div class="user-name">${esc(c.name||"(이름없음)")}${isBase?' <span style="color:#5A3A2B;font-size:10.5px;font-weight:800">· 기준 회사</span>':''}</div>
         <div class="user-email">${esc(c.biz_no||"사업자번호 미입력")} · 요금제 ${esc(c.plan||"free")}</div>
-        <div class="user-meta">ID ${esc(String(c.id||"").slice(0,8))}… · 생성 ${esc((c.created_at||"").slice(0,10))}</div>
+        <div class="user-meta">관리자: ${ownerText} · ID ${esc(String(c.id||"").slice(0,8))}… · 생성 ${esc((c.created_at||"").slice(0,10))}</div>
       </div>
       <div class="user-actions" style="flex-direction:column;align-items:stretch;gap:6px;min-width:270px">
         <input id="ouid_${esc(c.id)}" type="text" placeholder="관리자 User UID (uuid)" style="${inp};min-width:260px">
         <input id="oname_${esc(c.id)}" type="text" placeholder="관리자 이름(선택)" style="${inp};min-width:260px">
         <button class="btn" onclick="linkOwner('${esc(c.id)}')">관리자 연결</button>
+        ${isBase?'':`<button class="btn ghost" style="color:#8B3A2F" onclick="deleteCompany('${esc(c.id)}', ${JSON.stringify(c.name||"")})">회사 삭제</button>`}
       </div>
-    </div>`).join("");
+    </div>`;
+    }).join("");
   }
   html+=`</div>`;
   body.innerHTML=html;
+}
+// 회사 삭제: 회사명 재입력 확인 후 자식(멤버십·데이터)부터 삭제 (기준 회사는 보호)
+async function deleteCompany(id, name){
+  if(id===DEFAULT_COMPANY_ID){ alert("기준 회사는 삭제할 수 없습니다."); return; }
+  const typed=prompt(`정말 「${name}」 회사를 삭제하려면 회사명을 그대로 입력하세요.\n(회사·구성원 소속·회사 데이터가 모두 삭제되며 되돌릴 수 없습니다)`);
+  if(typed===null) return;
+  if(typed.trim()!==(name||"").trim()){ alert("회사명이 일치하지 않아 취소했습니다."); return; }
+  try{
+    // FK 안전: 자식(memberships, company_data) 먼저 → companies 마지막
+    await fetch(`${SUPABASE_URL}/rest/v1/memberships?company_id=eq.${id}`,{method:"DELETE",headers:await sbHeaders({ "Prefer":"return=minimal" })});
+    await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${id}`,{method:"DELETE",headers:await sbHeaders({ "Prefer":"return=minimal" })});
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/companies?id=eq.${id}`,{method:"DELETE",headers:await sbHeaders({ "Prefer":"return=minimal" })});
+    if(r.ok){ adminToast("✓ 회사 삭제됨"); await Promise.all([loadCompanies(), loadCompanyOwners()]); renderPlatform(); }
+    else { const d=await r.json().catch(()=>({})); alert("삭제 실패 ("+r.status+"). "+((d&&(d.message||d.hint))||"")+"\n(플랫폼 운영자 슈퍼권한 정책이 적용됐는지 확인하세요)"); }
+  }catch(e){ alert("삭제 중 오류가 발생했습니다."); }
 }
 // A방식: Supabase에서 만든 관리자 계정의 User UID를 받아 해당 회사의 owner(active)로 연결
 async function linkOwner(companyId){
@@ -3355,7 +3548,7 @@ async function linkOwner(companyId){
     if(r.ok){
       adminToast("✓ 관리자 연결됨");
       if(uidEl) uidEl.value=""; if(nameEl) nameEl.value="";
-      await loadCompanies(); renderPlatform();
+      await Promise.all([loadCompanies(), loadCompanyOwners()]); renderPlatform();
     } else {
       const d=await r.json().catch(()=>({}));
       const raw=JSON.stringify(d);
