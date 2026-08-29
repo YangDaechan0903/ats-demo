@@ -12,8 +12,8 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
-    background:var(--bg);color:var(--ink);height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased}
-  .app{display:flex;height:calc(100vh - 46px)}
+    background:var(--bg);color:var(--ink);height:100vh;overflow:hidden;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+  .app{display:flex;flex:1;min-height:0}
 
   /* ── left: job list ── */
   .side{width:248px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);
@@ -437,7 +437,7 @@
   .hris-shell{flex:1;display:flex;flex-direction:column;min-height:0}
   .app{flex:1;min-height:0}
   /* 모듈 컨테이너 (ATS 외) */
-  .module{flex:1;display:none;flex-direction:column;min-width:0;background:var(--bg);overflow:hidden}
+  .module{flex:1;display:none;flex-direction:column;min-width:0;min-height:0;background:var(--bg);overflow:hidden}
   .module.show{display:flex}
   #hris-ats{flex-direction:row}
   #hris-ats.show{display:flex}
@@ -3215,7 +3215,7 @@ function renderCompanyInfo(){
           <span>${esc(m._name||"(이름없음)")} ${String(m.company_id)===String(CURRENT_COMPANY_ID)?'<span style="color:#5A3A2B;font-weight:800;font-size:11px">· 현재 보는 중</span>':''}</span>
           ${String(m.company_id)!==String(CURRENT_COMPANY_ID)?`<span style="display:flex;gap:6px">
             <button class="btn ghost" style="font-size:11px;padding:4px 12px" onclick="switchCompany('${esc(m.company_id)}')">이동</button>
-            <button class="btn ghost" style="font-size:11px;padding:4px 12px;color:#8B3A2F" onclick="deleteSubsidiary('${esc(m.company_id)}', ${JSON.stringify(m._name||"")})">삭제</button>
+            <button class="btn ghost" style="font-size:11px;padding:4px 12px;color:#8B3A2F" onclick="deleteSubsidiary('${esc(m.company_id)}')">삭제</button>
           </span>`:''}
         </div>`).join("")}
       </div>
@@ -3299,8 +3299,10 @@ async function addSubsidiary(){
   }catch(e){ if(msg){ msg.style.color="#8B3A2F"; msg.textContent="네트워크 오류로 등록에 실패했습니다."; } }
 }
 // 계열사 삭제 — 현재 보는 회사는 삭제 불가(다른 회사로 이동 후). 회사명 재입력 확인.
-async function deleteSubsidiary(companyId, name){
+async function deleteSubsidiary(companyId){
   if(String(companyId)===String(CURRENT_COMPANY_ID)){ alert("현재 보고 있는 회사는 삭제할 수 없습니다. 다른 회사로 이동한 뒤 삭제하세요."); return; }
+  const m=(MY_MEMBERSHIPS||[]).find(x=>String(x.company_id)===String(companyId));
+  const name=m?(m._name||""):"";
   const typed=prompt(`「${name}」 계열사를 삭제하려면 회사명을 그대로 입력하세요.\n(이 계열사의 임직원·급여·근로계약 등 데이터가 모두 삭제되며 되돌릴 수 없습니다)`);
   if(typed===null) return;
   if(typed.trim()!==(name||"").trim()){ alert("회사명이 일치하지 않아 취소했습니다."); return; }
@@ -3506,7 +3508,7 @@ function renderPlatform(){
         <input id="ouid_${esc(c.id)}" type="text" placeholder="관리자 User UID (uuid)" style="${inp};min-width:260px">
         <input id="oname_${esc(c.id)}" type="text" placeholder="관리자 이름(선택)" style="${inp};min-width:260px">
         <button class="btn" onclick="linkOwner('${esc(c.id)}')">관리자 연결</button>
-        ${isBase?'':`<button class="btn ghost" style="color:#8B3A2F" onclick="deleteCompany('${esc(c.id)}', ${JSON.stringify(c.name||"")})">회사 삭제</button>`}
+        ${isBase?'':`<button class="btn ghost" style="color:#8B3A2F" onclick="deleteCompany('${esc(c.id)}')">회사 삭제</button>`}
       </div>
     </div>`;
     }).join("");
@@ -3515,8 +3517,10 @@ function renderPlatform(){
   body.innerHTML=html;
 }
 // 회사 삭제: 회사명 재입력 확인 후 자식(멤버십·데이터)부터 삭제 (기준 회사는 보호)
-async function deleteCompany(id, name){
+async function deleteCompany(id){
   if(id===DEFAULT_COMPANY_ID){ alert("기준 회사는 삭제할 수 없습니다."); return; }
+  const comp=(COMPANIES||[]).find(x=>String(x.id)===String(id));
+  const name=comp?(comp.name||""):"";
   const typed=prompt(`정말 「${name}」 회사를 삭제하려면 회사명을 그대로 입력하세요.\n(회사·구성원 소속·회사 데이터가 모두 삭제되며 되돌릴 수 없습니다)`);
   if(typed===null) return;
   if(typed.trim()!==(name||"").trim()){ alert("회사명이 일치하지 않아 취소했습니다."); return; }
