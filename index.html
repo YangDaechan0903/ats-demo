@@ -1583,7 +1583,6 @@ let IS_PLATFORM_ADMIN=false;   // 플랫폼 운영자(platform_admins) 여부 �
 const DEFAULT_COMPANY_ID="dd68fcdc-af8a-4399-8636-dfe3c858ee9f";  // 대찬인생
 let MEMBERSHIPS=[];            // 관리자 화면용: 현재 회사의 전체 멤버십 목록
 let COMPANIES=[];              // 플랫폼 운영자 화면용: 회사(테넌트) 목록
-let ASSIGN_CANDIDATES=[];      // 관리자 지정 후보: 기본 회사의 가입 대기자
 let curModule="home";    // 현재 활성 모듈 (접속 시 홈 대시보드부터 시작)
 let openEmpId=null, empEdit=false, edPanel="record";
 let nextEmpId=1;
@@ -3052,7 +3051,7 @@ function goModule(mod){
   else if(mod==="reward") renderPayrollList();
   else if(mod==="company") renderCompanyInfo();
   else if(mod==="admin"){ renderAdmin(); loadMemberships().then(renderAdmin); }
-  else if(mod==="platform"){ renderPlatform(); Promise.all([loadCompanies(), loadAssignCandidates()]).then(renderPlatform); }
+  else if(mod==="platform"){ renderPlatform(); loadCompanies().then(renderPlatform); }
 }
 
 /* ── 홈 대시보드 ── */
@@ -3318,54 +3317,55 @@ function renderPlatform(){
   </div>`;
   // 회사 목록
   html+=`<div class="rc-sec"><h3>회사 목록 <span class="badge">${COMPANIES.length}</span></h3>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">가입 대기자를 골라 각 회사의 <b>관리자(대표 계정)</b>로 지정합니다. 지정되면 그 사람이 자기 회사의 사용자·권한을 직접 관리합니다.</div>`;
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">각 회사에 <b>관리자 계정</b>을 연결합니다. 먼저 Supabase의 Authentication에서 관리자 계정(이메일·비밀번호)을 만든 뒤, 그 계정의 <b>User UID</b>를 아래에 붙여넣으세요. 연결된 관리자는 자기 회사의 구성원 가입·권한을 직접 관리합니다.</div>`;
   if(!COMPANIES.length){ html+=`<div style="font-size:12.5px;color:var(--faint);padding:6px 2px">아직 생성된 회사가 없습니다.</div>`; }
   else {
-    const candOpts = ASSIGN_CANDIDATES.map(c=>`<option value="${esc(c.id)}">${esc(c.name||"(이름없음)")} · ${esc(String(c.user_id||"").slice(0,8))}…</option>`).join("");
     html+=COMPANIES.map(c=>`<div class="user-row approved" style="align-items:flex-start">
       <div class="user-info">
         <div class="user-name">${esc(c.name||"(이름없음)")}</div>
         <div class="user-email">${esc(c.biz_no||"사업자번호 미입력")} · 요금제 ${esc(c.plan||"free")}</div>
         <div class="user-meta">ID ${esc(String(c.id||"").slice(0,8))}… · 생성 ${esc((c.created_at||"").slice(0,10))}</div>
       </div>
-      <div class="user-actions" style="flex-direction:column;align-items:stretch;gap:6px;min-width:220px">
-        ${ASSIGN_CANDIDATES.length
-          ? `<select id="assign_${esc(c.id)}" style="${inp};min-width:210px"><option value="">— 관리자로 지정할 가입자 —</option>${candOpts}</select>
-             <button class="btn" onclick="assignOwner('${esc(c.id)}', document.getElementById('assign_${esc(c.id)}').value)">관리자로 지정</button>`
-          : `<div style="font-size:11px;color:var(--faint);text-align:right">지정 대기 중인 가입자 없음</div>`}
+      <div class="user-actions" style="flex-direction:column;align-items:stretch;gap:6px;min-width:270px">
+        <input id="ouid_${esc(c.id)}" type="text" placeholder="관리자 User UID (uuid)" style="${inp};min-width:260px">
+        <input id="oname_${esc(c.id)}" type="text" placeholder="관리자 이름(선택)" style="${inp};min-width:260px">
+        <button class="btn" onclick="linkOwner('${esc(c.id)}')">관리자 연결</button>
       </div>
     </div>`).join("");
   }
   html+=`</div>`;
   body.innerHTML=html;
 }
-// 관리자 지정 후보: 신규 가입자는 기본 회사(DEFAULT_COMPANY_ID)의 pending으로 들어온다
-async function loadAssignCandidates(){
-  ASSIGN_CANDIDATES=[];
-  try{
-    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships?company_id=eq.${DEFAULT_COMPANY_ID}&status=eq.pending&select=id,user_id,name&order=requested_at.asc`,{headers:await sbHeaders()});
-    if(r.ok) ASSIGN_CANDIDATES=await r.json();
-  }catch(e){}
-  return ASSIGN_CANDIDATES;
-}
-// 대기자의 멤버십을 지정 회사의 owner(active)로 이동 — RLS상 기존 행 UPDATE(회사관리자 권한)로 처리
-async function assignOwner(companyId, membershipId){
-  if(!companyId){ alert("회사를 확인할 수 없습니다."); return; }
-  if(!membershipId){ alert("지정할 가입자를 먼저 선택하세요."); return; }
-  const cand=ASSIGN_CANDIDATES.find(x=>String(x.id)===String(membershipId));
+// A방식: Supabase에서 만든 관리자 계정의 User UID를 받아 해당 회사의 owner(active)로 연결
+async function linkOwner(companyId){
+  const uidEl=document.getElementById("ouid_"+companyId), nameEl=document.getElementById("oname_"+companyId);
+  const uid=(uidEl?uidEl.value:"").trim(), name=(nameEl?nameEl.value:"").trim();
   const comp=COMPANIES.find(x=>String(x.id)===String(companyId));
-  if(!confirm(`${cand?cand.name:"이 사용자"} 님을 「${comp?comp.name:"이 회사"}」의 관리자로 지정할까요?`)) return;
-  const ok=await patchMembership(membershipId, {
-    company_id: companyId, role:"owner", status:"active", approved_at:new Date().toISOString(),
-    permissions:{ats:true,contract:true,employees:true,labor:true,hrPayroll:true}
-  });
-  if(!ok){
-    adminToast("지정 실패 — 권한/네트워크 확인", false);
-    alert("관리자 지정에 실패했습니다.\n(회사관리자 권한 RLS 또는 네트워크 문제일 수 있습니다)");
-  } else {
-    adminToast("✓ 관리자로 지정됨");
-  }
-  await Promise.all([loadCompanies(), loadAssignCandidates()]); renderPlatform();
+  if(!uid){ alert("관리자 User UID를 입력하세요.\n(Supabase → Authentication → 해당 계정의 UID)"); return; }
+  if(!/^[0-9a-fA-F-]{32,40}$/.test(uid)){ if(!confirm("UID 형식이 일반적이지 않습니다. 그래도 진행할까요?")) return; }
+  if(!confirm(`「${comp?comp.name:"이 회사"}」의 관리자로 이 계정을 연결할까요?`)) return;
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships`,{
+      method:"POST",
+      headers: await sbHeaders({ "Prefer":"return=minimal", "Content-Type":"application/json" }),
+      body: JSON.stringify({ company_id:companyId, user_id:uid, name:name||"관리자", role:"owner", status:"active",
+        approved_at:new Date().toISOString(),
+        permissions:{ats:true,contract:true,employees:true,labor:true,hrPayroll:true} })
+    });
+    if(r.ok){
+      adminToast("✓ 관리자 연결됨");
+      if(uidEl) uidEl.value=""; if(nameEl) nameEl.value="";
+      await loadCompanies(); renderPlatform();
+    } else {
+      const d=await r.json().catch(()=>({}));
+      const raw=JSON.stringify(d);
+      let m="연결 실패 ("+r.status+"). "+((d&&(d.message||d.hint||d.details))||"");
+      if(r.status===409||/duplicate|unique/i.test(raw)) m="이미 이 회사에 연결된 계정입니다.";
+      else if(r.status===403) m="연결 권한이 없습니다. memberships INSERT 정책(플랫폼 운영자 허용)이 적용됐는지 확인하세요.";
+      else if(/foreign key|violates/i.test(raw)) m="존재하지 않는 User UID입니다. Supabase에서 UID를 다시 확인하세요.";
+      alert(m);
+    }
+  }catch(e){ alert("네트워크 오류로 연결에 실패했습니다."); }
 }
 async function createCompany(){
   const nameEl=document.getElementById("pcName"), bizEl=document.getElementById("pcBiz"), msg=document.getElementById("pcMsg");
