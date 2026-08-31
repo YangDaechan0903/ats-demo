@@ -5350,6 +5350,30 @@ async function shadowVerifyYearEnd(e, year, isLeaver, local){
     else { setYeShadow("ok","서버 계산 일치 ✓ (핵심 항목 전부 동일)"); }
   }catch(err){ setYeShadow("info","서버 확인 불가(오프라인?) · 로컬 계산 사용 중"); }
 }
+// ── 4대보험·소득세(급여) 서버 섀도우 대조 (calc-statutory) ──
+function setDedShadow(state, msg){
+  const el=document.getElementById("dedShadow"); if(!el) return;
+  const color = state==="ok" ? "#2E7D32" : state==="bad" ? "#B00020" : "#8a7a66";
+  el.style.color=color; el.textContent="🛡 "+msg;
+}
+async function shadowVerifyStatutory(base, dep, local){
+  if(!local) return;
+  try{
+    setDedShadow("info","서버 계산 대조 중…");
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/calc-statutory`, {
+      method:"POST", headers: await sbHeaders(), body: JSON.stringify({ base, dependents:dep })
+    });
+    if(!res.ok){ setDedShadow("info","서버 미배포/오류 "+res.status+" · 로컬 계산 사용 중"); return; }
+    const s=await res.json();
+    if(s && s.error){ setDedShadow("info","서버 오류: "+s.error); return; }
+    const keys=["np","hi","ltc","ei","it","lt","total"];
+    const nf=v=>(v!=null&&!isNaN(v))?Number(v).toLocaleString("ko-KR"):"—";
+    const diffs=[];
+    for(const k of keys){ if(Number(s[k])!==Number(local[k])) diffs.push(`${k}: 서버 ${nf(s[k])} ≠ 로컬 ${nf(local[k])}`); }
+    if(diffs.length){ setDedShadow("bad","서버 계산 불일치 — "+diffs.join(" / ")); console.warn("[4대보험 섀도우 불일치]",{base,dep,diffs,server:s,local}); }
+    else setDedShadow("ok","서버 계산 일치 ✓ (4대보험·소득세 전부 동일)");
+  }catch(e){ setDedShadow("info","서버 확인 불가(오프라인?) · 로컬 계산 사용 중"); }
+}
 function empYearEnd(empId, year, key, val){
   const e=findEmp(empId); if(!e) return;
   e.yearEnd=e.yearEnd||{}; e.yearEnd[year]=e.yearEnd[year]||{};
@@ -6264,7 +6288,9 @@ function renderContract(e){
         <tr style="background:#F3EAE3;font-weight:800"><td>공제합계</td><td style="text-align:right">${c.dedResult.total.toLocaleString("ko-KR")}</td></tr>
         <tr><td>지급총액(비과세 포함)</td><td style="text-align:right">${c.dedResult.gross.toLocaleString("ko-KR")}</td></tr>
         <tr style="font-weight:800;color:var(--primary)"><td>차인지급액(실수령 예상)</td><td style="text-align:right">${c.dedResult.net.toLocaleString("ko-KR")}</td></tr>
-      </tbody></table></div>`:""}
+      </tbody></table>
+      <div id="dedShadow" style="font-size:11px;color:#8a7a66;margin-top:8px">🛡 서버 계산 대조 준비…</div>
+    </div>`:""}
   </div>
 
   <div class="rc-sec" style="background:var(--primary-soft);border-color:#DFCEC2">
@@ -6394,6 +6420,7 @@ function computeDeductions(){
   c.dedBaseWage=String(base);
   c.dedResult={...r,gross:grossAll,net,at:new Date().toISOString()};
   save(); renderEmpDetail();
+  setTimeout(()=>shadowVerifyStatutory(base, dep, r), 0);   // 4대보험·소득세 서버 섀도우 대조(비차단, 표시만)
 }
 /* 동적 급여항목 핸들러 */
 function wageItem(i,k,v){ const e=findEmp(openEmpId); if(e&&e.contract&&e.contract.wageItems[i]){ e.contract.wageItems[i][k]=v; } }
