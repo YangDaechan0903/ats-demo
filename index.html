@@ -331,10 +331,10 @@
   textarea.memo:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
   .efield{margin-bottom:10px}
   .efield label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px}
-  .efield input,.efield textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 10px;
+  .efield input,.efield textarea,.efield select{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 10px;
     font:inherit;font-size:12px;outline:0;color:var(--ink)}
   .efield textarea{resize:vertical;min-height:72px;line-height:1.6}
-  .efield input:focus,.efield textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .efield input:focus,.efield textarea:focus,.efield select:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
   .erow{display:flex;gap:8px;margin-top:8px}
   .erow .btn{flex:1;justify-content:center}
 
@@ -1145,6 +1145,17 @@
   </div>
 </div>
 
+<!-- 전직명령(계열사 간 이동) -->
+<div class="payroll-detail-overlay" id="transferOverlay">
+  <div class="pd-box" style="max-width:440px">
+    <div class="pd-head">
+      <div style="flex:1"><h3>전직명령 (계열사 간 이동)</h3><div class="sub" id="transferMeta"></div></div>
+      <button class="btn ghost" onclick="closeTransferModal()">닫기</button>
+    </div>
+    <div class="pd-scroll" id="transferBody"></div>
+  </div>
+</div>
+
 <!-- candidate detail -->
 <div class="detail" id="detail">
   <div class="d-box" id="dBox">
@@ -1456,20 +1467,55 @@ function lightEmployees(){
   // photoData는 리사이즈된 작은 이미지라 클라우드에도 저장(기기 간 공유). 큰 계약서 파일만 제외.
   return (EMPLOYEES||[]).map(e=>({ ...e, contractFileData:"" }));
 }
-// 운영 데이터(jobs·employees·payrollRuns·companyInfo)를 현재 회사(company_data)에 저장.
-// ※ users(승인·권한)는 여기서 저장하지 않음 — app_state에 유지(saveUsers 참조, 증분2에서 memberships로 이전).
-// ※ companyInfo는 전환기 동안 company_data blob에 동반 저장(추후 companies.company_info 컬럼으로 완전 이전 예정).
+// 운영 데이터 저장 (ATS 공유 구조).
+//   ATS(jobs) ............ 대표 회사(REP_COMPANY_ID) company_data — 그룹(계열사) 통합 공유
+//   임직원·급여·회사정보 ... 현재 회사(CURRENT_COMPANY_ID) company_data — 계열사별 완전 분리
+//   REP===CURRENT(단일회사)면 한 번에 저장(기존과 동일).
+// ※ users(승인·권한)는 여기서 저장하지 않음 — 권한 정본은 memberships.
 async function cloudPush(){
   if(!CURRENT_COMPANY_ID){ setCloud(false, "⚠ 소속 회사 없음(로컬 저장됨)"); return; }
+  const single = !REP_COMPANY_ID || String(REP_COMPANY_ID)===String(CURRENT_COMPANY_ID);
+  const H = await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" });
   try{
-    const payload = { jobs: lightCopy(), employees: lightEmployees(), payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO };
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
-      method:"POST",
-      headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
-      body: JSON.stringify({ company_id: CURRENT_COMPANY_ID, data: payload, updated_at:new Date().toISOString() })
+    if(single){
+      // 단일회사: jobs·employees·payroll·companyInfo를 현재 회사에 한 번에 저장 (기존 동작)
+      const payload = { jobs: lightCopy(), employees: lightEmployees(), payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO };
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
+        method:"POST", headers:H,
+        body: JSON.stringify({ company_id: CURRENT_COMPANY_ID, data: payload, updated_at:new Date().toISOString() })
+      });
+      if(res.ok) setCloud(true, "☁ 동기화됨"); else setCloud(false, "⚠ 동기화 오류 "+res.status);
+      return;
+    }
+
+    // ── 다중회사(계열사): 쓰기 분리 ──
+    // (A) 현재 회사(계열사) ← 임직원·급여·회사정보. jobs는 대표 회사에만 두므로 여기선 빈 배열로 청소.
+    const curPayload = { jobs: [], employees: lightEmployees(), payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO };
+    const curRes = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
+      method:"POST", headers:H,
+      body: JSON.stringify({ company_id: CURRENT_COMPANY_ID, data: curPayload, updated_at:new Date().toISOString() })
     });
-    if(res.ok) setCloud(true, "☁ 동기화됨");
-    else setCloud(false, "⚠ 동기화 오류 "+res.status);
+
+    // (B) 대표 회사 ← ATS(jobs)만 갱신.
+    //     ⚠ upsert가 data blob 전체를 덮으므로, 대표 회사의 임직원·급여·회사정보를 먼저 읽어 보존한다.
+    //        읽기가 실패하면(대표 데이터를 알 수 없으면) jobs 쓰기를 건너뛴다 → 대표 회사 데이터 파괴 방지.
+    let repOk=false;
+    try{
+      const g = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${REP_COMPANY_ID}&select=data`, { headers: await sbHeaders() });
+      if(!g.ok) throw new Error("rep read "+g.status);   // 읽기 실패 → 아래 catch로 → repOk=false, 대표 보존
+      const rows = await g.json();
+      let repData = { jobs:[], employees:[], payrollRuns:[], companyInfo:{} };
+      if(rows.length){ const u=unpackData(rows[0].data); if(u) repData=u; }
+      const repPayload = { jobs: lightCopy(), employees: repData.employees||[], payrollRuns: repData.payrollRuns||[], companyInfo: repData.companyInfo||{} };
+      const rRes = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
+        method:"POST", headers:H,
+        body: JSON.stringify({ company_id: REP_COMPANY_ID, data: repPayload, updated_at:new Date().toISOString() })
+      });
+      repOk = rRes.ok;
+    }catch(e){ repOk=false; }
+
+    if(curRes.ok && repOk) setCloud(true, "☁ 동기화됨");
+    else setCloud(false, "⚠ 동기화 오류(ATS "+(repOk?"OK":"보류")+" · 회사 "+(curRes.ok?"OK":"실패")+")");
   }catch(e){ setCloud(false, "⚠ 오프라인(로컬 저장됨)"); }
 }
 // data(jsonb) 파서 — company_data/app_state 공용. 두 형식 허용: (구형) JOBS 배열 그대로 / (신형) {jobs, employees, users, payrollRuns, companyInfo}
@@ -1479,20 +1525,35 @@ function unpackData(d){
   return null;
 }
 async function load(){
-  // 1) 운영 데이터 ← company_data (신 멀티테넌트 구조, 현재 회사 기준)
-  let cloud=null;
+  // ── 데이터 소스 분리 (ATS 공유) ──
+  //   ATS(JOBS) ............ 대표 회사(REP_COMPANY_ID) company_data — 그룹(계열사) 통합 공유
+  //   임직원·급여·회사정보 ... 현재 회사(CURRENT_COMPANY_ID) company_data — 계열사별 완전 분리
+  //   REP===CURRENT(단일회사)면 한 번만 읽어 재사용.
+  const single = !REP_COMPANY_ID || !CURRENT_COMPANY_ID || String(REP_COMPANY_ID)===String(CURRENT_COMPANY_ID);
+
+  // 1) 현재 회사 company_data (임직원·급여·회사정보)
+  let curCloud=null;
   if(CURRENT_COMPANY_ID){
     try{
       const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${CURRENT_COMPANY_ID}&select=data`, { headers: await sbHeaders() });
-      if(res.ok){ const rows=await res.json(); if(rows.length) cloud=unpackData(rows[0].data); setCloud(true,"☁ 동기화됨"); }
+      if(res.ok){ const rows=await res.json(); if(rows.length) curCloud=unpackData(rows[0].data); setCloud(true,"☁ 동기화됨"); }
       else setCloud(false, "⚠ 연결 오류 "+res.status);
     }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
   } else {
     setCloud(false, "⚠ 소속 회사 없음(로컬 사용)");
   }
 
-  // (봉인) 사용자/승인 목록은 더 이상 app_state에서 읽지 않음 — 권한 정본은 memberships.
-  // USERS는 하위호환용 빈 배열로 둔다.
+  // 1b) 대표 회사 company_data (ATS 공유원본). REP===CURRENT면 위 결과 재사용.
+  let repCloud = curCloud;
+  if(!single){
+    repCloud=null;
+    try{
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${REP_COMPANY_ID}&select=data`, { headers: await sbHeaders() });
+      if(res.ok){ const rows=await res.json(); if(rows.length) repCloud=unpackData(rows[0].data); }
+    }catch(e){ /* 대표 회사 ATS 읽기 실패 → 아래 로컬/시드 폴백 */ }
+  }
+
+  // (봉인) 사용자/승인 목록은 더 이상 app_state에서 읽지 않음 — 권한 정본은 memberships. USERS는 하위호환용 빈 배열.
 
   // 회사 이전분 companyInfo(마이그레이션으로 companies.company_info에 있을 수 있음) — company_data blob에 없을 때 시드로 사용
   const ciFromCompany = (CURRENT_COMPANY && CURRENT_COMPANY.company_info && typeof CURRENT_COMPANY.company_info==="object" && Object.keys(CURRENT_COMPANY.company_info).length) ? CURRENT_COMPANY.company_info : null;
@@ -1504,31 +1565,49 @@ async function load(){
   try{ const r=localStorage.getItem(PAY_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localPay=a; } }catch(e){}
   try{ const r=localStorage.getItem(COMPANY_STORE); if(r){ const a=JSON.parse(r); if(a&&typeof a==="object") localCompany=a; } }catch(e){}
 
-  if(cloud && (cloud.jobs.length || cloud.employees.length)){
-    // 첨부파일은 기기 로컬에만 있으므로 클라우드 데이터에 다시 붙여줌
-    const fileMap={};
-    if(localJobs) for(const j of localJobs) for(const c of (j.cands||[])) fileMap[c.id]={fileData:c.fileData,audioData:c.audioData};
-    for(const j of cloud.jobs) for(const c of (j.cands||[])){ const f=fileMap[c.id]; if(f){ if(f.fileData)c.fileData=f.fileData; if(f.audioData)c.audioData=f.audioData; } }
-    const empFileMap={};
-    if(localEmps) for(const e of localEmps) empFileMap[e.id]={contractFileData:e.contractFileData,photoData:e.photoData};
-    for(const e of cloud.employees){ const f=empFileMap[e.id]; if(f){ if(f.contractFileData)e.contractFileData=f.contractFileData; if(f.photoData)e.photoData=f.photoData; } }
-    JOBS=cloud.jobs.length?cloud.jobs:seed();
-    EMPLOYEES=cloud.employees||[];
-    USERS=[];
-    PAYROLL_RUNS=cloud.payrollRuns||localPay||[];
-    // companyInfo 우선순위: company_data blob → 회사 이전분(companies) → 로컬 → 빈값
-    COMPANY_INFO={...blankCompanyInfo(), ...((cloud.companyInfo&&Object.keys(cloud.companyInfo).length)?cloud.companyInfo:(ciFromCompany||localCompany||{}))};
-    persistLocal();
+  // 첨부파일 재부착용 로컬 맵 (첨부파일은 기기 로컬에만 있으므로 클라우드 데이터에 다시 붙여줌)
+  const fileMap={};
+  if(localJobs) for(const j of localJobs) for(const c of (j.cands||[])) fileMap[c.id]={fileData:c.fileData,audioData:c.audioData};
+  const empFileMap={};
+  if(localEmps) for(const e of localEmps) empFileMap[e.id]={contractFileData:e.contractFileData,photoData:e.photoData};
+
+  const haveRepJobs = !!(repCloud && repCloud.jobs && repCloud.jobs.length);
+
+  // ── JOBS ← 대표 회사(공유 ATS) ──
+  if(haveRepJobs){
+    for(const j of repCloud.jobs) for(const c of (j.cands||[])){ const f=fileMap[c.id]; if(f){ if(f.fileData)c.fileData=f.fileData; if(f.audioData)c.audioData=f.audioData; } }
+    JOBS=repCloud.jobs;
   } else if(localJobs && localJobs.length){
-    JOBS=localJobs; EMPLOYEES=localEmps||[]; USERS=[]; PAYROLL_RUNS=localPay||[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||localCompany||{})}; cloudPush();
+    JOBS=localJobs;
   } else {
-    JOBS=seed(); EMPLOYEES=[]; USERS=[]; PAYROLL_RUNS=[]; COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||{})}; cloudPush();
+    JOBS = single ? seed() : [];   // 다중회사에서 대표 jobs가 아직 없으면 빈 목록(대표 회사에 데모 seed가 저장되는 것 방지)
   }
+
+  // ── 임직원·급여·회사정보 ← 현재 회사(계열사별 분리) ──
+  if(curCloud){
+    for(const e of curCloud.employees) { const f=empFileMap[e.id]; if(f){ if(f.contractFileData)e.contractFileData=f.contractFileData; if(f.photoData)e.photoData=f.photoData; } }
+    EMPLOYEES=curCloud.employees||[];
+    PAYROLL_RUNS=curCloud.payrollRuns||localPay||[];
+    // companyInfo 우선순위: company_data blob → 회사 이전분(companies) → 로컬 → 빈값
+    COMPANY_INFO={...blankCompanyInfo(), ...((curCloud.companyInfo&&Object.keys(curCloud.companyInfo).length)?curCloud.companyInfo:(ciFromCompany||localCompany||{}))};
+  } else {
+    EMPLOYEES=localEmps||[];
+    PAYROLL_RUNS=localPay||[];
+    COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||localCompany||{})};
+  }
+  USERS=[];
+  persistLocal();
+
+  // 클라우드에 쓸 만한 데이터가 없던 신규 상태면 초기값을 저장.
+  // ※ 단일회사(REP===CURRENT)에서만 여기서 push. 다중회사(계열사)의 쓰기 분리는 증분2에서 처리하므로,
+  //   실수로 계열사 company_data에 jobs가 섞여 들어가지 않도록 여기서는 push하지 않는다.
+  const cloudUsable = haveRepJobs || (curCloud && curCloud.employees.length);
+  if(single && !cloudUsable){ cloudPush(); }
 }
 // 로그인 후: 내가 속한 회사(테넌트)를 확정한다. 단일회사 UX이므로 보통 활성 멤버십 1개.
 // 멤버십이 없으면 CURRENT_COMPANY_ID=null → load()는 로컬/seed로 폴백(증분2 온보딩·이전에서 처리).
 async function resolveCompanyContext(preferredCompanyId){
-  CURRENT_COMPANY_ID=null; CURRENT_COMPANY=null; CURRENT_MEMBERSHIP=null; IS_PLATFORM_ADMIN=false; MY_MEMBERSHIPS=[];
+  CURRENT_COMPANY_ID=null; CURRENT_COMPANY=null; CURRENT_MEMBERSHIP=null; IS_PLATFORM_ADMIN=false; MY_MEMBERSHIPS=[]; REP_COMPANY_ID=null;
   // 플랫폼 운영자 여부 (RLS: 본인 행만 반환 → 행이 있으면 platform_admin)
   try{
     const pRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_admins?select=user_id`, { headers: await sbHeaders() });
@@ -1550,6 +1629,8 @@ async function resolveCompanyContext(preferredCompanyId){
     }catch(e){}
     mems.forEach(m=>{ m._company = comps.find(x=>String(x.id)===String(m.company_id)) || null; m._name = m._company ? m._company.name : m.company_id; });
     MY_MEMBERSHIPS = mems;
+    // 대표 회사 = 내 활성 멤버십 중 가장 오래된 회사(requested_at.asc 첫 번째). ATS 공유 저장소.
+    REP_COMPANY_ID = (mems[0] && mems[0].company_id) || null;
     // 선택할 회사 결정: 인자 > 저장된 선택 > 첫 번째
     let saved=null; try{ saved=localStorage.getItem(COMPANY_SEL_STORE); }catch(e){}
     let chosen = null;
@@ -1558,6 +1639,7 @@ async function resolveCompanyContext(preferredCompanyId){
     if(!chosen) chosen = mems[0];
     if(chosen){ CURRENT_MEMBERSHIP=chosen; CURRENT_COMPANY_ID=chosen.company_id; CURRENT_COMPANY=chosen._company; }
   }
+  if(!REP_COMPANY_ID) REP_COMPANY_ID = CURRENT_COMPANY_ID;   // 대표 미계산 시 현재 회사로 정합(단일회사 등가)
   return CURRENT_COMPANY_ID;
 }
 // 회사(계열사) 전환: 선택한 회사로 컨텍스트를 바꾸고 데이터·화면을 다시 로드
@@ -1627,6 +1709,7 @@ let CURRENT_COMPANY=null;      // companies 행 {id,name,biz_no,plan,features,co
 let CURRENT_MEMBERSHIP=null;   // 내 memberships 행 {company_id,role,permissions,status,name} — 권한판정 정본
 let IS_PLATFORM_ADMIN=false;   // 플랫폼 운영자(platform_admins) 여부 — 전 회사 슈퍼권한
 let MY_MEMBERSHIPS=[];         // 내가 속한 활성 회사(계열사)들 — 전환 드롭다운용
+let REP_COMPANY_ID=null;       // 대표 회사(그룹의 첫 회사=가장 오래된 회사). ATS(공고·지원자)는 이 회사에 저장·공유. 회사 하나면 REP=CURRENT.
 // 신규 회원가입이 소속 신청할 기본 회사(테넌트). 단일회사 배포용 설정값 — 추후 온보딩에서 동적화.
 const DEFAULT_COMPANY_ID="dd68fcdc-af8a-4399-8636-dfe3c858ee9f";  // 대찬인생
 let MEMBERSHIPS=[];            // 관리자 화면용: 현재 회사의 전체 멤버십 목록
@@ -2176,18 +2259,27 @@ function sideView(c,j){
       <button class="edit-btn" style="margin-top:8px" onclick="runAnalysis()">AI 없이 간단 분석</button>
     </div>`;
   // ── 최종합격 시: 입사일자 입력 + 근로계약 연계 ──
-  const alreadyEmp = EMPLOYEES.find(e=>e.fromCandId===c.id);
+  const hs = candHireStatus(c);
   const hireHtml = (c.stage==="pass" && !c.rejected) ? `
     <div class="side-sec">
       <div class="sh"><h4>🎉 최종 합격 · 입사 처리</h4></div>
       <div style="background:#F0F9F4;border:1px solid #DCCABD;border-radius:11px;padding:14px">
-        ${alreadyEmp ? `
+        ${hs ? `
           <div style="font-size:12.5px;color:#5A3A2B;line-height:1.6;margin-bottom:10px">
-            ✓ 이미 임직원으로 전환되었습니다.<br>입사일: <b>${esc(alreadyEmp.joinDate||"미정")}</b></div>
-          <button class="btn" style="width:100%;justify-content:center" onclick="gotoEmpContract(${alreadyEmp.id})">📝 근로계약 작성/수정하러 가기</button>
+            ✓ 이미 임직원으로 전환되었습니다.${hs.companyName?`<br>입사 회사: <b>${esc(hs.companyName)}</b>`:""}<br>입사일: <b>${esc(hs.joinDate||"미정")}</b></div>
+          ${(hs.isCurrent && hs.empId!=null)
+            ? `<button class="btn" style="width:100%;justify-content:center" onclick="gotoEmpContract(${hs.empId})">📝 근로계약 작성/수정하러 가기</button>`
+            : ((hs.companyId && hs.empId!=null)
+              ? `<button class="btn" style="width:100%;justify-content:center" onclick="hireGotoOtherCompany('${esc(hs.companyId)}',${hs.empId})">↪ ${esc(hs.companyName||"해당 회사")}(으)로 전환하여 근로계약</button>`
+              : `<div style="font-size:12px;color:#7A5541;line-height:1.55">해당 회사(<b>${esc(hs.companyName||"다른 계열사")}</b>)로 전환하면 근로계약을 작성·수정할 수 있습니다.</div>`)}
         ` : `
           <div style="font-size:12px;color:#5A3A2B;line-height:1.55;margin-bottom:10px">
             입사일자를 입력하면 임직원으로 등록되고, <b>근로계약 작성</b>으로 이어집니다.</div>
+          ${(MY_MEMBERSHIPS && MY_MEMBERSHIPS.length>1) ? `
+          <div class="efield" style="margin-bottom:10px"><label>입사 회사(계열사)</label>
+            <select id="hireCompanySel">
+              ${MY_MEMBERSHIPS.map(m=>`<option value="${esc(m.company_id)}" ${String(m.company_id)===String(CURRENT_COMPANY_ID)?"selected":""}>${esc(m._name||"회사")}</option>`).join("")}
+            </select></div>` : ""}
           <div class="efield" style="margin-bottom:10px"><label>입사일자</label>
             <input id="hireDate" type="date" value="${esc(c.hireDate||todayISO())}" oninput="saveHireDate()"></div>
           <button class="btn" style="width:100%;justify-content:center" onclick="hireAndContract()">✓ 입사 확정 · 근로계약 작성</button>
@@ -3630,12 +3722,36 @@ const DOC_LIST=[
 ];
 
 /* ── ATS 최종합격자 → 임직원 전환 ── */
+// 지원자의 입사(임직원 전환) 상태 — 공유 ATS 표식(hiredCompanyId) 우선, 없으면 현재 회사 명부에서 폴백.
+// ATS는 그룹 공유이므로, 어느 계열사로 입사했든 그룹 어디서나 일관되게 판정된다.
+function candHireStatus(c){
+  if(!c) return null;
+  if(c.hiredCompanyId){
+    const localEmp = EMPLOYEES.find(e=>e.fromCandId===c.id) || null;   // 현재 회사로 전환된 경우 실제 레코드가 로컬에 있음
+    return {
+      hired:true,
+      companyId:c.hiredCompanyId,
+      companyName:c.hiredCompanyName||"",
+      empId:(localEmp ? localEmp.id : (c.hiredEmpId!=null ? c.hiredEmpId : null)),
+      joinDate:((localEmp && localEmp.joinDate) || c.hireDate || ""),
+      isCurrent:String(c.hiredCompanyId)===String(CURRENT_COMPANY_ID),
+      localEmp
+    };
+  }
+  // 폴백: 표식이 없던 과거 전환자 (현재 회사 명부에만 존재)
+  const localEmp = EMPLOYEES.find(e=>e.fromCandId===c.id) || null;
+  if(localEmp){
+    return { hired:true, companyId:CURRENT_COMPANY_ID, companyName:(CURRENT_COMPANY&&CURRENT_COMPANY.name)||"", empId:localEmp.id, joinDate:localEmp.joinDate||"", isCurrent:true, localEmp };
+  }
+  return null;
+}
 function eligibleForConversion(){
-  // 최종 합격(pass) 단계이면서 아직 임직원으로 전환 안 된 지원자
+  // 최종 합격(pass) 단계이면서 아직 임직원으로 전환 안 된 지원자 (그룹 어느 회사로든 입사했으면 제외)
   const conv=new Set(EMPLOYEES.filter(e=>e.fromCandId).map(e=>e.fromCandId));
   const out=[];
   for(const j of JOBS) for(const c of (j.cands||[])){
     if(c.rejected) continue;
+    if(c.hiredCompanyId) continue;                     // 공유 표식: 그룹 어느 계열사로든 이미 입사
     if(c.stage==="pass" && !conv.has(c.id)) out.push({c,j});
   }
   return out;
@@ -3648,25 +3764,183 @@ function saveHireDate(){
   // 저장은 확정 시에만 (여기선 임시 보관), 가볍게 save
   save();
 }
-function hireAndContract(){
+async function hireAndContract(){
   const c=findCand(openId); if(!c) return;
   const el=document.getElementById("hireDate");
   const hd=(el&&el.value)||c.hireDate||todayISO();
-  c.hireDate=hd;
-  save();
-  // 이미 전환된 임직원이 있으면 그 계약으로, 없으면 새로 전환
-  let emp=EMPLOYEES.find(e=>e.fromCandId===c.id);
+  const candId=c.id;
+  // 입사 대상 회사 (드롭다운 없으면 현재 회사)
+  const sel=document.getElementById("hireCompanySel");
+  const targetId=(sel&&sel.value)||CURRENT_COMPANY_ID;
+
+  // ── 대상 회사가 현재 회사와 다르면: 그 회사로 컨텍스트 전환 후 등록 ((가) 방식) ──
+  if(String(targetId)!==String(CURRENT_COMPANY_ID)){
+    const m=(MY_MEMBERSHIPS||[]).find(x=>String(x.company_id)===String(targetId));
+    if(!m){ alert("선택한 입사 회사를 찾을 수 없습니다."); return; }
+    if(!confirm(`'${m._name||"선택한 회사"}'(으)로 입사 처리합니다.\n화면이 해당 회사로 전환됩니다. 계속할까요?`)) return;
+    clearTimeout(pushTimer);                                  // 현재 회사 대기 저장 취소(전환 후 대상 회사로 재저장)
+    CURRENT_MEMBERSHIP=m; CURRENT_COMPANY_ID=m.company_id; CURRENT_COMPANY=m._company;
+    try{ localStorage.setItem(COMPANY_SEL_STORE, targetId); }catch(e){}
+    curUser={ name:m.name||"", status:m.status, perms:(m.permissions||{}) };
+    await load();                                             // 대상 회사 데이터 로드(그 회사 임직원 + 공유 ATS)
+    applyPerms();
+    renderCompanySwitcher();
+  }
+
+  // 여기부터 CURRENT = 입사 대상 회사. 공유 ATS에서 지원자를 id로 다시 찾아 전환(전환 후 JOBS 참조가 새로 로드됨).
+  const cc=findCand(candId);
+  if(!cc){ alert("지원자 정보를 찾을 수 없습니다."); return; }
+  cc.hireDate=hd;
+  let emp=EMPLOYEES.find(e=>e.fromCandId===cc.id);
   if(!emp){
-    emp=convertCandidateToEmp(c.id, hd);
+    emp=convertCandidateToEmp(cc.id, hd);                     // 대상 회사 명부에 등록 + 표식(대상 회사) 스탬프
   } else {
     emp.joinDate=hd;
     if(emp.contract){ emp.contract.periodStart=hd; emp.contract.salaryPeriodStart=hd; }
+    cc.hiredCompanyId   = CURRENT_COMPANY_ID;
+    cc.hiredCompanyName = (CURRENT_COMPANY && CURRENT_COMPANY.name) || COMPANY_INFO.name || "";
+    cc.hiredEmpId       = emp.id;
+    cc.hireDate         = hd;
     save();
   }
   if(!emp) return;
-  // ATS 상세 닫고 → 유지 없이 바로 근로계약 작성으로
+  computeIds();
+  // ATS 상세 닫고 → 바로 근로계약 작성으로
   closeDetail();
   gotoEmpContract(emp.id);
+}
+// 다른 계열사로 입사한 사람의 근로계약을 열기: 그 회사로 전환 후 인사기록카드 근로계약 탭 이동
+async function hireGotoOtherCompany(companyId, empId){
+  const m=(MY_MEMBERSHIPS||[]).find(x=>String(x.company_id)===String(companyId));
+  if(!m){ alert("해당 회사를 찾을 수 없습니다."); return; }
+  if(String(companyId)!==String(CURRENT_COMPANY_ID)){
+    clearTimeout(pushTimer);
+    CURRENT_MEMBERSHIP=m; CURRENT_COMPANY_ID=m.company_id; CURRENT_COMPANY=m._company;
+    try{ localStorage.setItem(COMPANY_SEL_STORE, companyId); }catch(e){}
+    curUser={ name:m.name||"", status:m.status, perms:(m.permissions||{}) };
+    await load();
+    applyPerms();
+    computeIds();
+    renderCompanySwitcher();
+  }
+  closeDetail();
+  gotoEmpContract(empId);
+}
+// ── 전직명령 (계열사 간 이동): A=전출(퇴사) / B=전입(신규 입사) ──
+function tfClone(o){ try{ return o==null?o:JSON.parse(JSON.stringify(o)); }catch(e){ return o; } }
+function ymdAddDays(ymd, delta){
+  const p=String(ymd||"").split("-").map(Number);
+  if(p.length!==3 || p.some(isNaN)) return ymd;
+  const dt=new Date(p[0], p[1]-1, p[2]+delta);
+  const z=n=>String(n).padStart(2,"0");
+  return `${dt.getFullYear()}-${z(dt.getMonth()+1)}-${z(dt.getDate())}`;
+}
+// 대상 회사(B)에 만들 신규 입사자 레코드 생성. 개인 신상·이력은 이어받고, 입사일·연말정산·급여는 새로 시작.
+function buildTransferEmp(src, transferDate, fromName, toName, newId){
+  const e=blankEmployee();
+  e.id=newId; e.source="transfer"; e.status="active";
+  // 개인 신상 (동일인)
+  e.name=src.name||""; e.engName=src.engName||""; e.birth=src.birth||""; e.gender=src.gender||"";
+  e.addr=src.addr||""; e.email=src.email||""; e.phone=src.phone||"";
+  e.emgContact=src.emgContact||""; e.emgRelation=src.emgRelation||"";
+  e.dept=src.dept||""; e.position=src.position||""; e.photoData=src.photoData||"";
+  // 이력 (동일인의 과거 기록 유지)
+  e.education=tfClone(src.education)||[]; e.career=tfClone(src.career)||[]; e.certs=tfClone(src.certs)||[];
+  e.family=tfClone(src.family)||[]; e.military=tfClone(src.military)||e.military; e.docs=tfClone(src.docs)||{};
+  // 입사자처럼 새로 세팅 — 입사일=전직일, 연말정산 빈값(대상 회사에서 새로 시작), 급여 이력 없음
+  e.joinDate=transferDate; e.leaveDate=""; e.yearEnd={};
+  // 근로계약: 템플릿으로 가져오되 계약기간은 전직일 기준 초기화, 회사(갑) 정보는 비움(대상 회사 기준 재작성)
+  e.contract=tfClone(src.contract)||e.contract;
+  e.contract.periodStart=transferDate; e.contract.salaryPeriodStart=transferDate;
+  e.contract.periodEnd=""; e.contract.salaryPeriodEnd="";
+  e.contract.empName=""; e.contract.empCeo=""; e.contract.empAddr="";
+  // 전직발령 이력: 기존 이력 이어가고 전입 기록 추가
+  const prior=tfClone((src.labor&&src.labor.transfers)||[])||[];
+  e.labor={ transfers:prior, unionJoined:false, unionName:"", contracts:[] };
+  e.labor.transfers.push({ date:transferDate, type:"전입(계열사 이동)", from:fromName, to:toName });
+  // 원 채용 스냅샷은 참고용 유지. fromCandId는 이어받지 않음(ATS 공유표식은 원 회사를 가리킨 채 보존).
+  e.recruitInfo = src.recruitInfo ? tfClone(src.recruitInfo) : null;
+  e.contractFileData="";   // 원 회사 계약서 파일은 이어받지 않음(대상 회사 계약 새로 체결)
+  e.createdAt=new Date().toISOString();
+  return e;
+}
+function openTransferModal(){
+  const e=findEmp(openEmpId); if(!e) return;
+  if(!(MY_MEMBERSHIPS && MY_MEMBERSHIPS.length>1)){ alert("전직할 다른 계열사가 없습니다."); return; }
+  if(e.status==="leave"){ alert("이미 퇴사 처리된 임직원은 전직명령을 실행할 수 없습니다."); return; }
+  const opts=MY_MEMBERSHIPS.filter(m=>String(m.company_id)!==String(CURRENT_COMPANY_ID))
+    .map(m=>`<option value="${esc(m.company_id)}">${esc(m._name||"회사")}</option>`).join("");
+  if(!opts){ alert("전직할 다른 계열사가 없습니다."); return; }
+  document.getElementById("transferMeta").textContent=`${e.name} · ${e.dept||"부서미정"} · ${e.position||""}`;
+  const fromName=(CURRENT_COMPANY&&CURRENT_COMPANY.name)||COMPANY_INFO.name||"현재 회사";
+  document.getElementById("transferBody").innerHTML=`
+    <div class="efield" style="margin-bottom:10px"><label>전직 대상 회사(계열사)</label><select id="transferTarget">${opts}</select></div>
+    <div class="efield" style="margin-bottom:10px"><label>전직일 (대상 회사 입사일)</label><input type="date" id="transferDate" value="${todayISO()}"></div>
+    <div style="font-size:11px;color:var(--faint);line-height:1.7;margin:10px 0 14px">
+      · 현재 회사(<b>${esc(fromName)}</b>): <b>퇴사(전출)</b> 처리 — 퇴사일은 전직일 전날로 기록됩니다.<br>
+      · 대상 회사: <b>신규 입사자</b>로 생성(입사일=전직일). 연말정산·급여는 대상 회사에서 새로 시작합니다.<br>
+      · 과거 급여·연말정산은 현재 회사에 <b>그대로 보존</b>됩니다.
+    </div>
+    <button class="btn" style="width:100%;justify-content:center" onclick="confirmTransfer()">전직명령 실행</button>`;
+  document.getElementById("transferOverlay").classList.add("show");
+}
+function closeTransferModal(){ const el=document.getElementById("transferOverlay"); if(el) el.classList.remove("show"); }
+async function confirmTransfer(){
+  const e=findEmp(openEmpId); if(!e){ alert("직원 정보를 찾을 수 없습니다."); return; }
+  const targetId=(document.getElementById("transferTarget")||{}).value;
+  const tdate=(document.getElementById("transferDate")||{}).value;
+  if(!targetId){ alert("전직 대상 회사를 선택하세요."); return; }
+  if(!tdate){ alert("전직일을 입력하세요."); return; }
+  if(String(targetId)===String(CURRENT_COMPANY_ID)){ alert("현재 회사로는 전직할 수 없습니다."); return; }
+  const m=(MY_MEMBERSHIPS||[]).find(x=>String(x.company_id)===String(targetId));
+  if(!m){ alert("대상 회사를 찾을 수 없습니다."); return; }
+  const fromName=(CURRENT_COMPANY&&CURRENT_COMPANY.name)||COMPANY_INFO.name||"현재 회사";
+  const toName=m._name||"대상 회사";
+  const leaveA=ymdAddDays(tdate,-1);
+  if(!confirm(`'${e.name}' 님을 '${toName}'(으)로 전직명령 처리합니다.\n\n· ${fromName}: 퇴사(전출) 처리 (퇴사일 ${leaveA})\n· ${toName}: 신규 입사자로 생성 (입사일 ${tdate})\n\n계속할까요?`)) return;
+
+  clearTimeout(pushTimer);   // 진행 중 저장 취소(마지막에 현재 회사로 재저장)
+
+  // 1) 대상 회사(B) blob 읽기 → 신규 레코드 추가 → 되쓰기 (B 기존 데이터 보존)
+  let bData;
+  try{
+    const g=await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${targetId}&select=data`, { headers: await sbHeaders() });
+    if(!g.ok) throw new Error("read "+g.status);
+    const rows=await g.json();
+    bData = rows.length ? unpackData(rows[0].data) : { jobs:[], employees:[], users:[], payrollRuns:[], companyInfo:{} };
+  }catch(err){ alert("대상 회사 데이터를 읽지 못했습니다. 네트워크를 확인하고 다시 시도하세요.\n("+(err&&err.message||err)+")"); return; }
+
+  const newId = Math.max(0, ...bData.employees.map(x=>+x.id||0)) + 1;
+  const bEmp = buildTransferEmp(e, tdate, fromName, toName, newId);
+  const bEmployees = [bEmp, ...bData.employees];
+
+  let bOk=false;
+  try{
+    const w=await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
+      method:"POST",
+      headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
+      body: JSON.stringify({ company_id: targetId, data: { jobs:bData.jobs||[], employees:bEmployees, payrollRuns:bData.payrollRuns||[], companyInfo:bData.companyInfo||{} }, updated_at:new Date().toISOString() })
+    });
+    bOk=w.ok;
+  }catch(err){ bOk=false; }
+  if(!bOk){ alert("대상 회사에 저장하지 못했습니다. 현재 회사 데이터는 그대로 유지됩니다. 잠시 후 다시 시도하세요."); return; }
+
+  // 2) B 저장 성공 → 현재 회사(A) 레코드 퇴사(전출) 처리 (삭제 아님)
+  e.status="leave";
+  e.leaveDate=leaveA;
+  e.labor=e.labor||{transfers:[],unionJoined:false,unionName:"",contracts:[]};
+  e.labor.transfers=e.labor.transfers||[];
+  e.labor.transfers.push({ date:tdate, type:"전출(계열사 이동)", from:fromName, to:toName });
+  persistLocal();
+  clearTimeout(pushTimer);
+  await cloudPush();   // ★ 전환 전에 현재 회사(A)에 즉시 확정 저장 — 디바운스 취소로 퇴사 반영이 유실되지 않도록
+
+  closeTransferModal();
+  renderEmpDetail();
+  alert(`전직명령 완료.\n· ${fromName}: 퇴사 처리 (퇴사일 ${leaveA})\n· ${toName}: 신규 입사 생성 (입사일 ${tdate})`);
+  if(confirm(`'${toName}'(으)로 전환해서 전입된 임직원을 확인할까요?`)){
+    await hireGotoOtherCompany(targetId, newId);
+  }
 }
 function gotoEmpContract(empId){
   goModule("employees");
@@ -3692,6 +3966,12 @@ function convertCandidateToEmp(candId, hireDate){
   // ── 면접 전형 결과 스냅샷 (인사기록카드에 표시) ──
   e.recruitInfo = buildRecruitSnapshot(found, fj);
   EMPLOYEES.unshift(e);
+  // ── 공유 ATS 표식: 지원자에 "어느 회사로 입사했는지" 기록 (그룹 전체 공유·중복입사 방지) ──
+  //    전환 시점의 현재 회사가 입사 회사. (증분3B에서 계열사 선택 시엔 그 회사로 전환한 뒤 호출됨)
+  found.hiredCompanyId   = CURRENT_COMPANY_ID;
+  found.hiredCompanyName = (CURRENT_COMPANY && CURRENT_COMPANY.name) || COMPANY_INFO.name || "";
+  found.hiredEmpId       = e.id;
+  found.hireDate         = e.joinDate;
   save();
   return e;
 }
@@ -5043,6 +5323,33 @@ function calcYearEndSettlement(e, year, isLeaver){
     educationCredit, donationCredit, itemizedCredit, specialCreditChosen, totalCredit, sme,
     decidedTax, decidedLocalTax, refund, refundLocal, isLeaver};
 }
+// ── 연말정산 서버 계산 섀도우 대조 (모방방지 이전 파일럿) ──
+// 화면엔 로컬(클라) 결과를 그대로 사용하고, 뒤에서 Edge Function(calc-yearend) 결과와 항목별로 대조만 한다.
+// 계산 동작은 전혀 바꾸지 않는다. (서버 정본 전환·클라 로직 제거는 파리티 검증 후 별도 단계)
+function setYeShadow(state, msg){
+  const el=document.getElementById("yeShadow"); if(!el) return;
+  const color = state==="ok" ? "#2E7D32" : state==="bad" ? "#B00020" : "#8a7a66";
+  el.style.color=color; el.textContent="🛡 "+msg;
+}
+async function shadowVerifyYearEnd(e, year, isLeaver, local){
+  if(!local || !local.p) return;
+  try{
+    setYeShadow("info","서버 계산 대조 중…");
+    const payload = { p: local.p, year:String(year), isLeaver:!!isLeaver, ye:(e.yearEnd&&e.yearEnd[year])||{}, dep: tallyDependents(e) };
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/calc-yearend`, {
+      method:"POST", headers: await sbHeaders(), body: JSON.stringify(payload)
+    });
+    if(!res.ok){ setYeShadow("info","서버 미배포/오류 "+res.status+" · 로컬 계산 사용 중"); return; }
+    const server = await res.json();
+    if(server && server.error){ setYeShadow("info","서버 오류: "+server.error); return; }
+    const keys=["salary","earnedDeduction","earnedIncome","taxBase","calcTax","totalCredit","decidedTax","decidedLocalTax","refund","refundLocal"];
+    const nf=v=>(v!=null&&!isNaN(v))?Number(v).toLocaleString("ko-KR"):"—";
+    const diffs=[];
+    for(const k of keys){ if(Number(server[k])!==Number(local[k])) diffs.push(`${k}: 서버 ${nf(server[k])} ≠ 로컬 ${nf(local[k])}`); }
+    if(diffs.length){ setYeShadow("bad","서버 계산 불일치 — "+diffs.join(" / ")); console.warn("[연말정산 섀도우 불일치]", {empId:e.id, year, diffs, server, local}); }
+    else { setYeShadow("ok","서버 계산 일치 ✓ (핵심 항목 전부 동일)"); }
+  }catch(err){ setYeShadow("info","서버 확인 불가(오프라인?) · 로컬 계산 사용 중"); }
+}
 function empYearEnd(empId, year, key, val){
   const e=findEmp(empId); if(!e) return;
   e.yearEnd=e.yearEnd||{}; e.yearEnd[year]=e.yearEnd[year]||{};
@@ -5149,6 +5456,7 @@ function renderYearEndCalc(empId, year){
   const leaveDate=parseYmd(e.leaveDate);
   const isLeaver = leaveDate && leaveDate.getFullYear()===parseInt(year);
   const r=calcYearEndSettlement(e, year, isLeaver);
+  setTimeout(()=>shadowVerifyYearEnd(e, year, isLeaver, r), 0);   // 서버 계산 섀도우 대조(비차단, 표시만)
   const d=(e.yearEnd&&e.yearEnd[year])||{};
   document.getElementById("pdMeta").textContent=`${e.dept||"—"} · ${e.position||"—"} · ${year}년 귀속`+(isLeaver?` · 중도퇴사자(${e.leaveDate})`:"");
   const idx=curYETarget?curYETarget.idx:0, total=curYETarget?curYETarget.empIds.length:1;
@@ -5161,6 +5469,7 @@ function renderYearEndCalc(empId, year){
   document.getElementById("pdBody").innerHTML=`
     ${nav}
     <div style="font-size:13px;font-weight:800;margin-bottom:8px">${esc(e.name)} — ${year}년 연말정산</div>
+    <div id="yeShadow" style="font-size:11px;color:#8a7a66;margin-bottom:10px">🛡 서버 계산 대조 준비…</div>
     ${isLeaver?`<div style="margin-bottom:14px;padding:10px 14px;border-radius:8px;background:#FBEAEA;color:#B23B3B;font-size:12px;line-height:1.6">
       ⚠ <b>중도퇴사자 정산</b>입니다. 소득세법상 원칙적으로 <b>기본공제(본인)</b>만 적용하며, 특별소득·세액공제는 근로자가 퇴사 전 관련 서류를 제출한 경우에만 반영할 수 있어 이 계산기에서는 자동 제외했습니다.
       정산 시점도 다음해 2월이 아니라 <b>퇴사한 달의 급여 지급 시</b>입니다.</div>`:""}
@@ -6339,6 +6648,14 @@ function renderLabor(e){
       <tbody>${trRows||`<tr><td colspan="${on?5:4}" style="color:var(--faint);text-align:center;padding:12px">전직발령 내역이 없습니다</td></tr>`}</tbody></table></div>
     ${on?`<button class="rtable-add" onclick="empTransferAdd()">+ 발령 추가</button>`:""}
   </div>
+
+  ${(MY_MEMBERSHIPS && MY_MEMBERSHIPS.length>1) ? `
+  <div class="rc-sec"><h3>🔁 전직명령 (계열사 간 이동)</h3>
+    <div style="font-size:11.5px;color:var(--faint);margin-bottom:8px;line-height:1.6">이 임직원을 다른 계열사로 전직 처리합니다. 현재 회사에서는 <b>퇴사(전출)</b>로 기록되고, 대상 회사에는 <b>신규 입사자</b>로 생성됩니다. 과거 급여·연말정산은 현재 회사에 그대로 보존됩니다.</div>
+    ${e.status==="leave"
+      ? `<div style="font-size:12px;color:var(--muted)">이미 퇴사 처리된 임직원은 전직명령을 실행할 수 없습니다.</div>`
+      : `<button class="btn" onclick="openTransferModal()">전직명령 실행…</button>`}
+  </div>` : ""}
 
   <div class="rc-sec"><h3>노동조합</h3>
     <div class="fg">
