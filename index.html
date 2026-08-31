@@ -3827,42 +3827,12 @@ async function hireGotoOtherCompany(companyId, empId){
   gotoEmpContract(empId);
 }
 // ── 전직명령 (계열사 간 이동): A=전출(퇴사) / B=전입(신규 입사) ──
-function tfClone(o){ try{ return o==null?o:JSON.parse(JSON.stringify(o)); }catch(e){ return o; } }
 function ymdAddDays(ymd, delta){
   const p=String(ymd||"").split("-").map(Number);
   if(p.length!==3 || p.some(isNaN)) return ymd;
   const dt=new Date(p[0], p[1]-1, p[2]+delta);
   const z=n=>String(n).padStart(2,"0");
   return `${dt.getFullYear()}-${z(dt.getMonth()+1)}-${z(dt.getDate())}`;
-}
-// 대상 회사(B)에 만들 신규 입사자 레코드 생성. 개인 신상·이력은 이어받고, 입사일·연말정산·급여는 새로 시작.
-function buildTransferEmp(src, transferDate, fromName, toName, newId){
-  const e=blankEmployee();
-  e.id=newId; e.source="transfer"; e.status="active";
-  // 개인 신상 (동일인)
-  e.name=src.name||""; e.engName=src.engName||""; e.birth=src.birth||""; e.gender=src.gender||"";
-  e.addr=src.addr||""; e.email=src.email||""; e.phone=src.phone||"";
-  e.emgContact=src.emgContact||""; e.emgRelation=src.emgRelation||"";
-  e.dept=src.dept||""; e.position=src.position||""; e.photoData=src.photoData||"";
-  // 이력 (동일인의 과거 기록 유지)
-  e.education=tfClone(src.education)||[]; e.career=tfClone(src.career)||[]; e.certs=tfClone(src.certs)||[];
-  e.family=tfClone(src.family)||[]; e.military=tfClone(src.military)||e.military; e.docs=tfClone(src.docs)||{};
-  // 입사자처럼 새로 세팅 — 입사일=전직일, 연말정산 빈값(대상 회사에서 새로 시작), 급여 이력 없음
-  e.joinDate=transferDate; e.leaveDate=""; e.yearEnd={};
-  // 근로계약: 템플릿으로 가져오되 계약기간은 전직일 기준 초기화, 회사(갑) 정보는 비움(대상 회사 기준 재작성)
-  e.contract=tfClone(src.contract)||e.contract;
-  e.contract.periodStart=transferDate; e.contract.salaryPeriodStart=transferDate;
-  e.contract.periodEnd=""; e.contract.salaryPeriodEnd="";
-  e.contract.empName=""; e.contract.empCeo=""; e.contract.empAddr="";
-  // 전직발령 이력: 기존 이력 이어가고 전입 기록 추가
-  const prior=tfClone((src.labor&&src.labor.transfers)||[])||[];
-  e.labor={ transfers:prior, unionJoined:false, unionName:"", contracts:[] };
-  e.labor.transfers.push({ date:transferDate, type:"전입(계열사 이동)", from:fromName, to:toName });
-  // 원 채용 스냅샷은 참고용 유지. fromCandId는 이어받지 않음(ATS 공유표식은 원 회사를 가리킨 채 보존).
-  e.recruitInfo = src.recruitInfo ? tfClone(src.recruitInfo) : null;
-  e.contractFileData="";   // 원 회사 계약서 파일은 이어받지 않음(대상 회사 계약 새로 체결)
-  e.createdAt=new Date().toISOString();
-  return e;
 }
 function openTransferModal(){
   const e=findEmp(openEmpId); if(!e) return;
@@ -3911,8 +3881,9 @@ async function confirmTransfer(){
   }catch(err){ alert("대상 회사 데이터를 읽지 못했습니다. 네트워크를 확인하고 다시 시도하세요.\n("+(err&&err.message||err)+")"); return; }
 
   const newId = Math.max(0, ...bData.employees.map(x=>+x.id||0)) + 1;
-  const bEmp = buildTransferEmp(e, tdate, fromName, toName, newId);
-  let __tfShadow=""; try{ __tfShadow = await shadowVerifyTransfer(e, {transferDate:tdate, fromName, toName, newId}, bEmp); }catch(_){}
+  const __tfParams={transferDate:tdate, fromName, toName, newId};
+  const bEmp = await serverBuildTransfer(e, __tfParams);
+  if(!bEmp){ alert("전직 레코드를 서버에서 생성하지 못했습니다.\n인터넷 연결을 확인하고 잠시 후 다시 시도해 주세요."); return; }
   const bEmployees = [bEmp, ...bData.employees];
 
   let bOk=false;
@@ -3938,7 +3909,7 @@ async function confirmTransfer(){
 
   closeTransferModal();
   renderEmpDetail();
-  alert(`전직명령 완료.\n· ${fromName}: 퇴사 처리 (퇴사일 ${leaveA})\n· ${toName}: 신규 입사 생성 (입사일 ${tdate})` + (__tfShadow? "\n\n"+__tfShadow : ""));
+  alert(`전직명령 완료.\n· ${fromName}: 퇴사 처리 (퇴사일 ${leaveA})\n· ${toName}: 신규 입사 생성 (입사일 ${tdate})`);
   if(confirm(`'${toName}'(으)로 전환해서 전입된 임직원을 확인할까요?`)){
     await hireGotoOtherCompany(targetId, newId);
   }
@@ -5375,21 +5346,17 @@ async function shadowVerifyStatutory(base, dep, local){
     else setDedShadow("ok","서버 계산 일치 ✓ (4대보험·소득세 전부 동일)");
   }catch(e){ setDedShadow("info","서버 확인 불가(오프라인?) · 로컬 계산 사용 중"); }
 }
-// ── 전직명령(신규레코드 생성) 서버 섀도우 대조 (build-transfer) ──
-// buildTransferEmp를 서버(Edge Function)에서도 실행해 클라 결과와 대조만 한다. 화면/동작은 로컬 결과 그대로 사용.
-async function shadowVerifyTransfer(src, params, local){
-  if(!local) return "";
+// ── 전직명령 신규레코드 생성: 서버 정본(build-transfer) ──
+// 전직 레코드 생성 로직은 서버에서만 실행한다(클라 로직 제거 완료 → 소스에 없음, 모방 방지). 서버 미응답 시 전직 중단.
+async function serverBuildTransfer(src, params){
   try{
     const payload={ src, transferDate:params.transferDate, fromName:params.fromName, toName:params.toName, newId:params.newId };
     const res=await fetch(`${SUPABASE_URL}/functions/v1/build-transfer`, { method:"POST", headers: await sbHeaders(), body: JSON.stringify(payload) });
-    if(!res.ok) return "🛡 서버 전직로직 미배포/오류 "+res.status+" · 로컬 사용";
+    if(!res.ok) return null;
     const server=await res.json();
-    if(server && server.error) return "🛡 서버 오류: "+server.error;
-    const norm=o=>{ const c=JSON.parse(JSON.stringify(o)); delete c.createdAt; return c; };
-    const deepEq=(a,b)=>{ if(a===b) return true; if(typeof a!==typeof b) return false; if(a&&b&&typeof a==="object"){ if(Array.isArray(a)!==Array.isArray(b)) return false; const ka=Object.keys(a),kb=Object.keys(b); if(ka.length!==kb.length) return false; for(const k of ka){ if(!deepEq(a[k],b[k])) return false; } return true; } return false; };
-    if(deepEq(norm(local),norm(server))){ console.log("[전직 섀도우] 서버 로직 일치 ✓"); return "🛡 서버 전직로직 대조: 일치 ✓"; }
-    console.warn("[전직 섀도우 불일치]",{local,server}); return "🛡 서버 전직로직 대조: 불일치(콘솔 확인)";
-  }catch(err){ return "🛡 서버 확인 불가(오프라인?) · 로컬 사용"; }
+    if(!server || server.error) return null;
+    return server;
+  }catch(err){ return null; }
 }
 function empYearEnd(empId, year, key, val){
   const e=findEmp(empId); if(!e) return;
