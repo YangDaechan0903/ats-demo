@@ -3912,6 +3912,7 @@ async function confirmTransfer(){
 
   const newId = Math.max(0, ...bData.employees.map(x=>+x.id||0)) + 1;
   const bEmp = buildTransferEmp(e, tdate, fromName, toName, newId);
+  let __tfShadow=""; try{ __tfShadow = await shadowVerifyTransfer(e, {transferDate:tdate, fromName, toName, newId}, bEmp); }catch(_){}
   const bEmployees = [bEmp, ...bData.employees];
 
   let bOk=false;
@@ -3937,7 +3938,7 @@ async function confirmTransfer(){
 
   closeTransferModal();
   renderEmpDetail();
-  alert(`전직명령 완료.\n· ${fromName}: 퇴사 처리 (퇴사일 ${leaveA})\n· ${toName}: 신규 입사 생성 (입사일 ${tdate})`);
+  alert(`전직명령 완료.\n· ${fromName}: 퇴사 처리 (퇴사일 ${leaveA})\n· ${toName}: 신규 입사 생성 (입사일 ${tdate})` + (__tfShadow? "\n\n"+__tfShadow : ""));
   if(confirm(`'${toName}'(으)로 전환해서 전입된 임직원을 확인할까요?`)){
     await hireGotoOtherCompany(targetId, newId);
   }
@@ -5373,6 +5374,22 @@ async function shadowVerifyStatutory(base, dep, local){
     if(diffs.length){ setDedShadow("bad","서버 계산 불일치 — "+diffs.join(" / ")); console.warn("[4대보험 섀도우 불일치]",{base,dep,diffs,server:s,local}); }
     else setDedShadow("ok","서버 계산 일치 ✓ (4대보험·소득세 전부 동일)");
   }catch(e){ setDedShadow("info","서버 확인 불가(오프라인?) · 로컬 계산 사용 중"); }
+}
+// ── 전직명령(신규레코드 생성) 서버 섀도우 대조 (build-transfer) ──
+// buildTransferEmp를 서버(Edge Function)에서도 실행해 클라 결과와 대조만 한다. 화면/동작은 로컬 결과 그대로 사용.
+async function shadowVerifyTransfer(src, params, local){
+  if(!local) return "";
+  try{
+    const payload={ src, transferDate:params.transferDate, fromName:params.fromName, toName:params.toName, newId:params.newId };
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/build-transfer`, { method:"POST", headers: await sbHeaders(), body: JSON.stringify(payload) });
+    if(!res.ok) return "🛡 서버 전직로직 미배포/오류 "+res.status+" · 로컬 사용";
+    const server=await res.json();
+    if(server && server.error) return "🛡 서버 오류: "+server.error;
+    const norm=o=>{ const c=JSON.parse(JSON.stringify(o)); delete c.createdAt; return c; };
+    const deepEq=(a,b)=>{ if(a===b) return true; if(typeof a!==typeof b) return false; if(a&&b&&typeof a==="object"){ if(Array.isArray(a)!==Array.isArray(b)) return false; const ka=Object.keys(a),kb=Object.keys(b); if(ka.length!==kb.length) return false; for(const k of ka){ if(!deepEq(a[k],b[k])) return false; } return true; } return false; };
+    if(deepEq(norm(local),norm(server))){ console.log("[전직 섀도우] 서버 로직 일치 ✓"); return "🛡 서버 전직로직 대조: 일치 ✓"; }
+    console.warn("[전직 섀도우 불일치]",{local,server}); return "🛡 서버 전직로직 대조: 불일치(콘솔 확인)";
+  }catch(err){ return "🛡 서버 확인 불가(오프라인?) · 로컬 사용"; }
 }
 function empYearEnd(empId, year, key, val){
   const e=findEmp(empId); if(!e) return;
