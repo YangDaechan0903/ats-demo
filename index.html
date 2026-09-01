@@ -6310,11 +6310,11 @@ const INCOME_TAX_BASE_10M=[1507400,1431570,1200840,1170840,1140840,1110840,10808
    기본급=ROUND(통상시급×소정-식대) 고정연장=ROUND(통상시급×1.5×연장)
    야간=ROUNDDOWN(통상시급×0.5×야간) 휴일=ROUNDDOWN(통상시급×1.5×휴일) 연차=ROUNDUP(통상시급×연차) */
 const AUTO_WAGE_LABELS=["기본급","식대(비과세)","고정연장근로수당","야간근로수당","휴일근로수당","연차수당"];
-function applyWageCalc(){
-  const e=findEmp(openEmpId); if(!e) return;
-  const c=migrateContract(e);
+// ── 급여 자동계산: 서버 정본(calc-wage). computeWageItems는 로컬 안전망(다음 단계 제거 예정). ──
+function computeWageItems(inp){
+  const c=inp;
   const annual=parseInt(digits(c.wageAnnual))||0;
-  if(!annual){ alert("연봉을 먼저 입력해주세요."); return; }
+  if(!annual){ return {error:"연봉을 먼저 입력해주세요."}; }
   const std=parseFloat(c.calcStdHours)||209;
   const ot=parseFloat(c.calcOtHours)||0;
   const night=parseFloat(c.calcNightHours)||0;
@@ -6326,12 +6326,12 @@ function applyWageCalc(){
   const manualKept=(c.wageItems||[]).filter(w=>!AUTO_WAGE_LABELS.includes(val(w.label)) && val(w.amount));
   const manualMonthlySum=manualKept.reduce((s,w)=>s+(parseInt(digits(w.amount))||0),0);
   const manualAnnual=manualMonthlySum*12;
-  if(manualAnnual>annual){ alert("수동 추가 항목의 연간 합계("+manualAnnual.toLocaleString("ko-KR")+"원)가 연봉보다 많습니다. 연봉 또는 수동 항목 금액을 확인해주세요."); return; }
+  if(manualAnnual>annual){ return {error:"수동 추가 항목의 연간 합계("+manualAnnual.toLocaleString("ko-KR")+"원)가 연봉보다 많습니다. 연봉 또는 수동 항목 금액을 확인해주세요."}; }
   const adjustedAnnual=annual-manualAnnual;
   const monthlyRaw=adjustedAnnual/12; // 통상시급 계산용 월급여(수동항목 제외분)
   const monthly=Math.round(annual/12); // 화면 표시용 '월 급여'는 연봉 전체 기준(수동항목 포함) 그대로 유지
   const denom=std+ot*1.5+night*0.5+holiday*1.5+leave; // 가산임금 배율(연장·휴일 ×1.5, 야간 +0.5) — 절대 변경 금지
-  if(!denom){ alert("소정근로시간 등 환산시간 합이 0입니다."); return; }
+  if(!denom){ return {error:"소정근로시간 등 환산시간 합이 0입니다."}; }
   const hourly=monthlyRaw/denom;
   const hr=Math.round(hourly);
   const items=[];
@@ -6341,10 +6341,28 @@ function applyWageCalc(){
   if(night>0) items.push({label:"야간근로수당", amount:String(Math.floor(hourly*0.5*night)), note:`통상시급 × 0.5 × 야간 ${night}시간`, auto:true});
   if(holiday>0) items.push({label:"휴일근로수당", amount:String(Math.floor(hourly*1.5*holiday)), note:`통상시급 × 1.5 × 휴일 ${holiday}시간`, auto:true});
   if(leave>0) items.push({label:"연차수당", amount:String(Math.ceil(hourly*leave)), note:`통상시급 × 연차 ${leave}시간`, auto:true});
-  c.wageItems=[...items, ...manualKept];
-  c.wageMonthly=String(monthly);
-  c.calcHourlyWage=String(hr);
+  return { wageItems:[...items, ...manualKept], wageMonthly:String(monthly), calcHourlyWage:String(hr) };
+}
+async function serverCalcWage(inp){
+  try{
+    const res=await fetch(`${SUPABASE_URL}/functions/v1/calc-wage`, { method:"POST", headers: await sbHeaders(), body: JSON.stringify(inp) });
+    if(!res.ok) return null;
+    const out=await res.json();
+    if(!out || typeof out!=="object") return null;
+    return out; // {wageItems,wageMonthly,calcHourlyWage} 또는 {error}
+  }catch(err){ return null; }
+}
+async function applyWageCalc(){
+  const e=findEmp(openEmpId); if(!e) return;
+  const c=migrateContract(e);
+  const inp={ wageAnnual:c.wageAnnual, calcStdHours:c.calcStdHours, calcOtHours:c.calcOtHours, calcNightHours:c.calcNightHours, calcHolidayHours:c.calcHolidayHours, calcLeaveHours:c.calcLeaveHours, calcMeal:c.calcMeal, wageItems:c.wageItems };
+  let r=await serverCalcWage(inp);        // 서버 정본
+  const usedServer=!!r;
+  if(!r) r=computeWageItems(inp);         // 로컬 안전망(다음 단계에서 제거 예정)
+  if(r && r.error){ alert(r.error); return; }
+  c.wageItems=r.wageItems; c.wageMonthly=r.wageMonthly; c.calcHourlyWage=r.calcHourlyWage;
   save(); renderEmpDetail();
+  adminToast(usedServer? "급여 자동계산: 서버 정본 ✓" : "급여 자동계산: 서버 미응답 → 로컬 임시", usedServer);
 }
 
 /* ── 공제내역 계산기 (인사담당자 전용 — 근로계약서에는 인쇄되지 않음) ──
