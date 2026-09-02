@@ -806,7 +806,13 @@
     <button class="gnb-btn" onclick="goModule('evaluate')">평가 <span class="soon">추후</span></button>
   </div>
   <div class="gnb-item" data-axis="reward">
-    <button class="gnb-btn" onclick="goModule('reward')">보상</button>
+    <button class="gnb-btn" onclick="toggleAxis('reward')">보상 <span style="font-size:9px">▾</span></button>
+    <div class="gnb-menu" data-axis="reward">
+      <div class="mlabel">보상</div>
+      <button onclick="goModule('reward');prShowTab('pay')">💰 급여관리</button>
+      <button onclick="goModule('reward');prShowTab('yearend')">📋 연말정산</button>
+      <button onclick="goModule('reward');prShowTab('leave')">🌴 연차관리</button>
+    </div>
   </div>
 
   <div class="gnb-item" data-axis="retain">
