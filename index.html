@@ -993,6 +993,7 @@
       <div id="prTabs" class="pr-subtabs">
         <button class="pr-subtab on" onclick="prShowTab('pay')">💰 급여관리</button>
         <button class="pr-subtab" onclick="prShowTab('yearend')">📋 연말정산</button>
+        <button class="pr-subtab" onclick="prShowTab('leave')">🌴 연차관리</button>
       </div>
 
       <div id="prPayTab">
@@ -1045,6 +1046,33 @@
         <div id="yeLeaveView" style="display:none">
           <div style="font-size:11.5px;color:var(--faint);margin-bottom:10px">💡 중도퇴사자는 원칙적으로 기본공제(본인)만 적용해 <b>퇴사한 달의 급여</b>에서 정산합니다. "급여에 반영" 버튼을 누르면 그 직원의 마지막 급여 작업에 정산분(중도퇴사 소득세/지방세)이 자동으로 채워집니다.</div>
           <div class="pr-gridwrap"><table class="pr-table" id="yeLeaveTable"></table></div>
+        </div>
+      </div>
+
+      <div id="prLeaveTab" style="display:none">
+        <div class="pr-toolbar" style="margin-bottom:6px;flex-wrap:wrap;gap:8px">
+          <label style="font-size:12px;font-weight:700;color:var(--muted)">연차 기준</label>
+          <select id="leaveBasisSel" onchange="setLeaveBasis(this.value)" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-weight:700">
+            <option value="hire">입사일 기준</option>
+            <option value="fiscal">회계연도 기준</option>
+          </select>
+          <span id="leaveFiscalCtrls" style="display:none;align-items:center;gap:6px">
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">회계연도 시작</label>
+            <input id="leaveFiscalStart" type="text" value="01-01" placeholder="MM-DD" style="width:80px;padding:7px 8px;border:1px solid var(--line);border-radius:8px" onchange="setLeaveFiscalStart(this.value)">
+            <label style="font-size:12px;font-weight:700;color:var(--muted)">조회연도</label>
+            <input id="leaveFiscalYear" type="number" style="width:92px;padding:7px 8px;border:1px solid var(--line);border-radius:8px" onchange="renderLeaveList()">
+          </span>
+          <span style="flex:1"></span>
+          <span id="leaveBaseNote" style="font-size:12px;font-weight:700;color:var(--muted)"></span>
+          <button class="btn ghost" onclick="renderLeaveList()">🔄 새로고침</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--faint);margin-bottom:10px">💡 근로기준법 제60조 기준. 회계연도 방식이라도 <b>퇴사 시 입사일 기준이 법정 최소</b>이므로, 회계연도 발생이 입사일 기준보다 적으면 <b>차액을 정산</b>해야 합니다. 사원을 클릭하면 상세·사용기록·연차수당을 볼 수 있습니다.</div>
+        <div class="pr-gridwrap"><table class="pr-table" id="leaveListTable"></table></div>
+      </div>
+
+      <div id="leaveDetailOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9998;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeLeaveDetail()">
+        <div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 14px 44px rgba(0,0,0,.28)">
+          <div id="leaveDetailBody" style="padding:22px 24px"></div>
         </div>
       </div>
     </div>
@@ -1697,7 +1725,8 @@ function blankCompanyInfo(){
   return { name:"", bizRegNo:"", corpRegNo:"", ceoName:"", bizType:"법인",
     zip:"", addr:"", addrDetail:"", phone:"",
     industryCode:"", bizCategory:"", bizItem:"",
-    estDate:"", openDate:"", taxOffice:"" };
+    estDate:"", openDate:"", taxOffice:"",
+    leaveBasis:"hire", leaveFiscalStart:"01-01" };
 }
 let USERS=[];            // 회원(가입 신청·승인·권한) 목록
 const ADMIN_EMAIL="ydc0126@naver.com";   // 고정 관리자
@@ -3221,7 +3250,8 @@ function renderHome(){
       stat: canViewHrSensitive() ? `급여 작업 ${PAYROLL_RUNS.length}건` : "",
       desc:"급여관리(월별 급여 작업)와 연말정산을 운영합니다. 연봉협상·복리후생은 추후 확장 예정입니다.",
       links: link("reward","💵","급여관리") +
-        (hasPerm("reward")?`<button class="hc-link" onclick="event.stopPropagation();goModule('reward');prShowTab('yearend');">📋 연말정산</button>`:""),
+        (hasPerm("reward")?`<button class="hc-link" onclick="event.stopPropagation();goModule('reward');prShowTab('yearend');">📋 연말정산</button>`:"") +
+        (hasPerm("reward")?`<button class="hc-link" onclick="event.stopPropagation();goModule('reward');prShowTab('leave');">🌴 연차관리</button>`:""),
       mod:"reward" },
     { axis:"retain", ico:"🤝", title:"유지", stat:`재직 임직원 ${activeEmpCount}명`,
       desc:"임직원 인사기록카드와 노무 이슈를 관리합니다.",
@@ -4357,11 +4387,187 @@ function renderPayrollList(){
 }
 function prShowTab(tab){
   document.querySelectorAll("#prTabs .pr-subtab").forEach(b=>b.classList.remove("on"));
-  const btn=[...document.querySelectorAll("#prTabs .pr-subtab")].find(b=>b.textContent.includes(tab==="pay"?"급여관리":"연말정산"));
+  const label = tab==="pay" ? "급여관리" : (tab==="yearend" ? "연말정산" : "연차관리");
+  const btn=[...document.querySelectorAll("#prTabs .pr-subtab")].find(b=>b.textContent.includes(label));
   if(btn) btn.classList.add("on");
   document.getElementById("prPayTab").style.display = tab==="pay" ? "" : "none";
   document.getElementById("prYearEndTab").style.display = tab==="yearend" ? "" : "none";
+  const lt=document.getElementById("prLeaveTab"); if(lt) lt.style.display = tab==="leave" ? "" : "none";
   if(tab==="yearend") renderYearEndList();
+  if(tab==="leave") renderLeaveList();
+}
+
+/* ═══════════════════════ 보상 > 연차관리 (근로기준법 제60조) ═══════════════════════
+   v1(증분1): 입사일 기준 발생·잔여 + 사원 명단. 사용내역 입력·연차수당·회계연도 기준은 후속 증분. */
+function lvParseYmd(x){ if(!x) return null; const m=String(x).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); return m? new Date(+m[1],+m[2]-1,+m[3]) : null; }
+function lvAddMonths(d,n){ return new Date(d.getFullYear(), d.getMonth()+n, d.getDate()); }
+function lvAddYears(d,n){ return new Date(d.getFullYear()+n, d.getMonth(), d.getDate()); }
+function lvCompleteMonths(a,b){ if(b<a) return 0; let m=(b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth()); if(b.getDate()<a.getDate()) m-=1; return Math.max(0,m); }
+function lvCompleteYears(a,b){ if(b<a) return 0; let y=b.getFullYear()-a.getFullYear(); const anv=new Date(a.getFullYear()+y,a.getMonth(),a.getDate()); if(anv>b) y-=1; return Math.max(0,y); }
+function lvFmtDate(d){ const z=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; }
+function lvFmtDays(n){ n=Math.round((+n||0)*100)/100; return Number.isInteger(n)? String(n) : n.toFixed(2).replace(/0+$/,"").replace(/\.$/,""); }
+
+// 입사일 기준 발생 연차(기준일 base까지). 근기법 제60조: 1년미만 월 1일(최대11) + 1년이상 15일, 3년차부터 2년당 1일(최대25).
+function accrueLeaveHireBasis(joinStr, base){
+  const join=lvParseYmd(joinStr); const grants=[];
+  if(!join||!base||base<join) return {grants, total:0};
+  const firstYearEnd=lvAddYears(join,1);
+  const mCap=lvCompleteMonths(join, base<firstYearEnd? base : firstYearEnd);
+  const monthly=Math.min(11, mCap);
+  for(let k=1;k<=monthly;k++) grants.push({date:lvFmtDate(lvAddMonths(join,k)), days:1, type:"월차(1년미만)"});
+  const yFull=lvCompleteYears(join, base);
+  for(let Y=1;Y<=yFull;Y++){ const days=Math.min(25, 15+Math.floor((Y-1)/2)); grants.push({date:lvFmtDate(lvAddYears(join,Y)), days, type:`연차(${Y}년차)`}); }
+  return {grants, total:grants.reduce((sm,g)=>sm+g.days,0)};
+}
+function leaveUsedDays(e){ const u=(e&&e.leave&&Array.isArray(e.leave.usages))? e.leave.usages : []; return u.reduce((sm,x)=>sm+(parseFloat(x.days)||0),0); }
+
+function leaveBasis(){ return (COMPANY_INFO&&COMPANY_INFO.leaveBasis==="fiscal")?"fiscal":"hire"; }
+function leaveFiscalStart(){ return (COMPANY_INFO&&COMPANY_INFO.leaveFiscalStart)||"01-01"; }
+function setLeaveBasis(v){ COMPANY_INFO=COMPANY_INFO||{}; COMPANY_INFO.leaveBasis=(v==="fiscal"?"fiscal":"hire"); save(); renderLeaveList(); }
+function setLeaveFiscalStart(v){ COMPANY_INFO=COMPANY_INFO||{}; const m=String(v||"").match(/^(\d{1,2})-(\d{1,2})$/); COMPANY_INFO.leaveFiscalStart = m? (String(+m[1]).padStart(2,"0")+"-"+String(+m[2]).padStart(2,"0")) : "01-01"; save(); renderLeaveList(); }
+
+// 회계연도 기준 발생: 1년미만 월차(입사일 기준) + 첫 회계일 비례연차(15×재직일/365, 소수점 둘째) + 이후 매 회계연도 15+가산(최대25)
+function accrueLeaveFiscalBasis(joinStr, fiscalStart, base){
+  const join=lvParseYmd(joinStr); const grants=[];
+  if(!join||!base||base<join) return {grants, total:0};
+  const parts=String(fiscalStart||"01-01").split("-"); const mm=parseInt(parts[0])||1, dd=parseInt(parts[1])||1;
+  let firstFiscal=new Date(join.getFullYear(), mm-1, dd);
+  if(firstFiscal<=join) firstFiscal=new Date(join.getFullYear()+1, mm-1, dd);
+  const firstYearEnd=lvAddYears(join,1);
+  const monthly=Math.min(11, lvCompleteMonths(join, base<firstYearEnd? base : firstYearEnd));
+  for(let k=1;k<=monthly;k++) grants.push({date:lvFmtDate(lvAddMonths(join,k)), days:1, type:"월차(1년미만)"});
+  if(firstFiscal<=base){
+    const prop=Math.round(15*((firstFiscal-join)/86400000)/365*100)/100;
+    grants.push({date:lvFmtDate(firstFiscal), days:prop, type:"비례연차(회계연도)"});
+  }
+  for(let g=1;;g++){
+    const d=lvAddYears(firstFiscal,g);
+    if(d>base) break;
+    grants.push({date:lvFmtDate(d), days:Math.min(25, 15+Math.floor(g/2)), type:"정규연차(회계 "+(g+1)+"년째)"});
+  }
+  return {grants, total:Math.round(grants.reduce((sm,g)=>sm+g.days,0)*100)/100};
+}
+
+function leaveWageInfo(e){
+  const c=(typeof migrateContract==="function")? migrateContract(e) : (e.contract||{});
+  const hourly=parseFloat(String(c.calcHourlyWage==null?"":c.calcHourlyWage).replace(/[^\d.]/g,""))||0;
+  const std=parseFloat(c.calcStdHours)||209;
+  const dailyHours=Math.round(std*8/209*100)/100;
+  const dailyPay=Math.round(hourly*(std*8/209));
+  return {hourly, std, dailyHours, dailyPay};
+}
+
+function leaveBaseDate(basis){
+  const today=new Date(); today.setHours(0,0,0,0);
+  if(basis!=="fiscal") return {base:today, selYear:today.getFullYear()};
+  const yrIn=document.getElementById("leaveFiscalYear");
+  let selYear=today.getFullYear(); if(yrIn&&yrIn.value) selYear=parseInt(yrIn.value)||selYear;
+  const parts=leaveFiscalStart().split("-"); const mm=parseInt(parts[0])||1, dd=parseInt(parts[1])||1;
+  const fyEnd=new Date(selYear+1, mm-1, dd); fyEnd.setDate(fyEnd.getDate()-1);
+  return {base: today<fyEnd? today : fyEnd, selYear};
+}
+
+function renderLeaveList(){
+  const basis=leaveBasis();
+  const sel=document.getElementById("leaveBasisSel"); if(sel) sel.value=basis;
+  const fc=document.getElementById("leaveFiscalCtrls"); if(fc) fc.style.display = basis==="fiscal" ? "inline-flex" : "none";
+  const fsIn=document.getElementById("leaveFiscalStart"); if(fsIn) fsIn.value=leaveFiscalStart();
+  const yrIn=document.getElementById("leaveFiscalYear"); if(yrIn && !yrIn.value) yrIn.value=new Date().getFullYear();
+  const {base, selYear}=leaveBaseDate(basis);
+  const note=document.getElementById("leaveBaseNote");
+  if(note) note.textContent = basis==="fiscal" ? `회계연도(${leaveFiscalStart()} 시작) · ${selYear}년 · 기준일 ${lvFmtDate(base)}` : `입사일 기준 · 오늘 ${lvFmtDate(base)}`;
+  const rows=(EMPLOYEES||[]).filter(e=>e.status!=="퇴사").slice().sort((a,b)=>String(a.joinDate||"").localeCompare(String(b.joinDate||"")));
+  const t=document.getElementById("leaveListTable"); if(!t) return;
+  const fiscalCol = basis==="fiscal";
+  let html=`<thead><tr><th>이름</th><th>부서</th><th>입사일</th><th>근속</th><th>발생</th><th>사용</th><th>잔여</th>${fiscalCol?"<th>입사일기준(법정)</th>":""}</tr></thead><tbody>`;
+  if(!rows.length) html+=`<tr><td colspan="${fiscalCol?8:7}" style="text-align:center;color:var(--faint);padding:18px">재직 중인 임직원이 없습니다.</td></tr>`;
+  for(const e of rows){
+    const join=lvParseYmd(e.joinDate);
+    let tenure="-", granted=0, used=leaveUsedDays(e), remain=0, hireTotal=0;
+    if(join){
+      const y=lvCompleteYears(join,base), mo=lvCompleteMonths(join,base)%12; tenure=`${y}년 ${mo}개월`;
+      granted = fiscalCol ? accrueLeaveFiscalBasis(e.joinDate, leaveFiscalStart(), base).total : accrueLeaveHireBasis(e.joinDate, base).total;
+      hireTotal = accrueLeaveHireBasis(e.joinDate, base).total;
+      remain = Math.round((granted-used)*100)/100;
+    }
+    const shortfall = fiscalCol && join && (hireTotal>granted);
+    html+=`<tr style="cursor:pointer${join?"":";opacity:.55"}" onclick="openLeaveDetail(${e.id})">
+      <td style="font-weight:700">${esc(e.name||"-")}</td>
+      <td>${esc(e.dept||"-")}</td>
+      <td>${e.joinDate?esc(e.joinDate):'<span style="color:var(--faint)">입사일 미입력</span>'}</td>
+      <td>${tenure}</td>
+      <td>${join?lvFmtDays(granted):"-"}</td>
+      <td>${join?lvFmtDays(used):"-"}</td>
+      <td style="font-weight:800">${join?lvFmtDays(remain):"-"}</td>
+      ${fiscalCol?`<td${shortfall?' style="color:#B23B3B;font-weight:800"':''}>${join?lvFmtDays(hireTotal):"-"}${shortfall?" ⚠":""}</td>`:""}
+    </tr>`;
+  }
+  t.innerHTML=html+"</tbody>";
+}
+
+function openLeaveDetail(empId){
+  const e=(typeof findEmp==="function")? findEmp(empId) : (EMPLOYEES||[]).find(x=>x.id===empId);
+  if(!e) return;
+  const basis=leaveBasis();
+  const {base, selYear}=leaveBaseDate(basis);
+  const today=new Date(); today.setHours(0,0,0,0);
+  const acc = basis==="fiscal" ? accrueLeaveFiscalBasis(e.joinDate, leaveFiscalStart(), base) : accrueLeaveHireBasis(e.joinDate, base);
+  const hireAcc = accrueLeaveHireBasis(e.joinDate, base);
+  const used=leaveUsedDays(e);
+  const remain=Math.round((acc.total-used)*100)/100;
+  const wi=leaveWageInfo(e);
+  const totalPay=Math.round(wi.dailyPay*remain);
+  const usages=(e.leave&&Array.isArray(e.leave.usages))? e.leave.usages : [];
+  const grantsHtml=acc.grants.length? acc.grants.map(g=>`<tr><td>${g.date}</td><td>${g.type}</td><td style="text-align:right;font-weight:700">${lvFmtDays(g.days)}일</td></tr>`).join("") : `<tr><td colspan="3" style="color:var(--faint);text-align:center;padding:10px">발생 내역 없음(입사일 확인)</td></tr>`;
+  const usageHtml=usages.length? usages.map((u,i)=>`<tr><td>${esc(u.date||"-")}</td><td style="text-align:right">${lvFmtDays(u.days)}일</td><td>${esc(u.memo||"")}</td><td style="text-align:center"><button class="btn ghost" style="padding:2px 8px;color:#B23B3B" onclick="delLeaveUsage(${e.id},${i})">삭제</button></td></tr>`).join("") : `<tr><td colspan="4" style="color:var(--faint);text-align:center;padding:10px">사용 내역 없음</td></tr>`;
+  const shortfall = basis==="fiscal" && (hireAcc.total>acc.total);
+  const body=document.getElementById("leaveDetailBody"); if(!body) return;
+  body.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h2 style="margin:0;font-size:18px">🌴 ${esc(e.name||"")} 연차 상세</h2>
+      <button class="btn ghost" onclick="closeLeaveDetail()">✕ 닫기</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">${esc(e.dept||"-")} · 입사일 ${esc(e.joinDate||"-")} · 기준 ${basis==="fiscal"?`회계연도(${esc(leaveFiscalStart())})·${selYear}년`:"입사일"} · 기준일 ${lvFmtDate(base)}</div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="flex:1;min-width:110px;background:var(--primary-soft);border-radius:10px;padding:12px 14px"><div style="font-size:11px;color:var(--muted);font-weight:700">발생</div><div style="font-size:20px;font-weight:800">${lvFmtDays(acc.total)}일</div></div>
+      <div style="flex:1;min-width:110px;background:#F4ECE6;border-radius:10px;padding:12px 14px"><div style="font-size:11px;color:var(--muted);font-weight:700">사용</div><div style="font-size:20px;font-weight:800">${lvFmtDays(used)}일</div></div>
+      <div style="flex:1;min-width:110px;background:#EAF3EA;border-radius:10px;padding:12px 14px"><div style="font-size:11px;color:var(--muted);font-weight:700">잔여</div><div style="font-size:20px;font-weight:800">${lvFmtDays(remain)}일</div></div>
+    </div>
+    ${shortfall?`<div style="background:#FBEEEE;border:1px solid #E7C4C4;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;color:#8A2B2B"><b>⚠ 퇴사 시 정산 필요</b><br>회계연도 기준 발생 ${lvFmtDays(acc.total)}일 &lt; 입사일 기준(법정) ${lvFmtDays(hireAcc.total)}일. 차액 <b>${lvFmtDays(Math.round((hireAcc.total-acc.total)*100)/100)}일</b>은 퇴사 시 지급해야 근기법 위반이 아닙니다.</div>`:""}
+    <h3 style="font-size:14px;margin:0 0 6px">📅 발생 내역</h3>
+    <div class="pr-gridwrap" style="margin-bottom:16px"><table class="pr-table"><thead><tr><th>발생일</th><th>구분</th><th style="text-align:right">일수</th></tr></thead><tbody>${grantsHtml}</tbody></table></div>
+    <h3 style="font-size:14px;margin:0 0 6px">🗓 사용 내역</h3>
+    <div class="pr-gridwrap" style="margin-bottom:10px"><table class="pr-table"><thead><tr><th>사용일</th><th style="text-align:right">일수</th><th>메모</th><th style="text-align:center">삭제</th></tr></thead><tbody>${usageHtml}</tbody></table></div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+      <input id="lvuDate" type="date" value="${lvFmtDate(today)}" style="padding:7px 8px;border:1px solid var(--line);border-radius:8px">
+      <input id="lvuDays" type="number" step="0.25" min="0.25" value="1" style="width:90px;padding:7px 8px;border:1px solid var(--line);border-radius:8px" placeholder="일수">
+      <input id="lvuMemo" type="text" style="flex:1;min-width:120px;padding:7px 8px;border:1px solid var(--line);border-radius:8px" placeholder="메모(선택)">
+      <button class="btn" onclick="addLeaveUsage(${e.id})">+ 사용 추가</button>
+    </div>
+    <h3 style="font-size:14px;margin:0 0 6px">💰 연차수당</h3>
+    ${wi.hourly>0?`<div style="font-size:13px;line-height:1.9">통상시급 <b>${wi.hourly.toLocaleString("ko-KR")}원</b> × 1일 소정근로시간 <b>${lvFmtDays(wi.dailyHours)}시간</b>(월소정 ${lvFmtDays(wi.std)}h) = <b>일 연차수당 ${wi.dailyPay.toLocaleString("ko-KR")}원</b><br>일 연차수당 ${wi.dailyPay.toLocaleString("ko-KR")}원 × 잔여 ${lvFmtDays(remain)}일 = <b style="color:var(--primary);font-size:15px">전체 연차수당 ${totalPay.toLocaleString("ko-KR")}원</b></div>`:`<div style="font-size:12.5px;color:#8A6650">통상시급이 없습니다. 근로계약 탭에서 <b>급여 자동계산</b>을 먼저 실행하면 연차수당이 계산됩니다.</div>`}
+  `;
+  const ov=document.getElementById("leaveDetailOverlay"); if(ov) ov.style.display="flex";
+}
+function closeLeaveDetail(){ const ov=document.getElementById("leaveDetailOverlay"); if(ov) ov.style.display="none"; }
+function addLeaveUsage(empId){
+  const e=(typeof findEmp==="function")? findEmp(empId) : (EMPLOYEES||[]).find(x=>x.id===empId); if(!e) return;
+  const date=(document.getElementById("lvuDate")||{}).value||"";
+  const days=parseFloat((document.getElementById("lvuDays")||{}).value)||0;
+  const memo=(document.getElementById("lvuMemo")||{}).value||"";
+  if(!date){ alert("사용일을 입력하세요."); return; }
+  if(!(days>0)){ alert("사용 일수를 0보다 크게 입력하세요. (반차 0.5, 반반차 0.25)"); return; }
+  if(!e.leave) e.leave={usages:[]};
+  if(!Array.isArray(e.leave.usages)) e.leave.usages=[];
+  e.leave.usages.push({date, days, memo});
+  e.leave.usages.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  save(); openLeaveDetail(empId); renderLeaveList();
+}
+function delLeaveUsage(empId, idx){
+  const e=(typeof findEmp==="function")? findEmp(empId) : (EMPLOYEES||[]).find(x=>x.id===empId);
+  if(!e||!e.leave||!Array.isArray(e.leave.usages)) return;
+  e.leave.usages.splice(idx,1);
+  save(); openLeaveDetail(empId); renderLeaveList();
 }
 function yeShowSubTab(tab){
   document.getElementById("yeTabCont").classList.toggle("on", tab==="cont");
