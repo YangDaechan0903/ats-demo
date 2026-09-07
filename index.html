@@ -3854,7 +3854,7 @@ function empInitial(name){ return (name||"?").trim().slice(0,1); }
 function blankEmployee(){
   return {
     id:nextEmpId++, source:"direct", status:"active",
-    name:"", engName:"", birth:"", gender:"", dept:"", position:"",
+    name:"", engName:"", birth:"", gender:"", dept:"", position:"", worksite:"",
     addr:"", email:"", phone:"", emgContact:"", emgRelation:"",
     joinDate:"", leaveDate:"",
     education:[], career:[], certs:[], family:[],
@@ -4161,6 +4161,7 @@ function openEmpNew(){
 
 /* ── 임직원 명부 렌더 ── */
 let empView="active";   // active | leave | asof
+let empFilterDept="", empFilterSite="";   // 명단 필터(부서/사업장)
 let empAsOfSub="active"; // asof 모드일 때: join | leave | active
 function setEmpView(v){ empView=v;
   document.getElementById("evtActive").classList.toggle("on",v==="active");
@@ -4183,6 +4184,25 @@ function setEmpAsOfSub(v){ empAsOfSub=v;
   document.getElementById("asofTabActive").classList.toggle("on",v==="active");
   renderEmployees();
 }
+function buildEmpFilterBar(){
+  const depts=[...new Set((EMPLOYEES||[]).map(e=>(e.dept||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const sites=[...new Set((EMPLOYEES||[]).map(e=>(e.worksite||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  if(empFilterDept && !depts.includes(empFilterDept)) depts.push(empFilterDept);
+  if(empFilterSite && !sites.includes(empFilterSite)) sites.push(empFilterSite);
+  const opt=(arr,cur)=>`<option value="">전체</option>`+arr.map(v=>`<option value="${esc(v)}" ${cur===v?"selected":""}>${esc(v)}</option>`).join("");
+  const active=empFilterDept||empFilterSite;
+  return `<div class="pr-toolbar" style="margin-bottom:14px;flex-wrap:wrap;gap:8px;align-items:center">
+    <span style="font-size:12px;font-weight:700;color:var(--muted)">🔎 필터</span>
+    <label style="font-size:12px;color:var(--muted)">사업장</label>
+    <select onchange="setEmpFilterSite(this.value)" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-weight:700">${opt(sites,empFilterSite)}</select>
+    <label style="font-size:12px;color:var(--muted)">부서</label>
+    <select onchange="setEmpFilterDept(this.value)" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-weight:700">${opt(depts,empFilterDept)}</select>
+    ${active?`<button class="btn ghost" style="padding:5px 12px" onclick="clearEmpFilters()">필터 초기화</button>`:""}
+  </div>`;
+}
+function setEmpFilterDept(v){ empFilterDept=v; renderEmployees(); }
+function setEmpFilterSite(v){ empFilterSite=v; renderEmployees(); }
+function clearEmpFilters(){ empFilterDept=""; empFilterSite=""; renderEmployees(); }
 function renderEmployees(){
   const grid=document.getElementById("empGrid"); if(!grid) return;
   const q=(document.getElementById("empQ").value||"").trim().toLowerCase();
@@ -4194,6 +4214,7 @@ function renderEmployees(){
   if(ca) ca.textContent=activeAll.length; if(cl) cl.textContent=leaveAll.length;
 
   let html="";
+  html += buildEmpFilterBar();
   // 전환 대기 배너 (재직 탭에서만)
   if(empView==="active" && conv.length){
     html+=`<div class="law-note" style="margin-bottom:14px">🎓 <b>최종 합격자 ${conv.length}명</b>이 임직원 전환을 기다리고 있습니다.</div>`;
@@ -4238,7 +4259,7 @@ function renderEmployees(){
     base=(empView==="leave"?leaveAll:activeAll);
     emptyMsg=empView==="leave"?"퇴사자가 없습니다.":"아직 등록된 재직 임직원이 없습니다.<br>ATS 최종 합격자를 전환하거나, 우측 상단 <b>임직원 등록</b>으로 추가하세요.";
   }
-  const list=base.filter(e=> !q || (e.name+" "+(e.dept||"")+" "+(e.position||"")).toLowerCase().includes(q));
+  const list=base.filter(e=> (!q || (e.name+" "+(e.dept||"")+" "+(e.position||"")+" "+(e.worksite||"")).toLowerCase().includes(q)) && (!empFilterDept || (e.dept||"")===empFilterDept) && (!empFilterSite || (e.worksite||"")===empFilterSite));
 
   if(!list.length && !(empView==="active"&&conv.length)){
     grid.innerHTML=html+`<div class="emp-empty">${emptyMsg}</div>`;
@@ -4944,7 +4965,7 @@ function applyExcelUpload(){
    빈 양식을 내려받아 오프라인에서 채운 뒤 업로드하면, 한 행당 임직원 1명이 새로 생성된다.
    인사기록카드에 있는 모든 항목(인사팀 작성란 포함)을 담는다 — 인사팀만 접근하는 자료이므로 전부 노출해도 무방.
    3행에는 예시 데이터가 미리 채워져 있어 형식을 헷갈리지 않도록 돕는다. */
-const EMP_XLSX_BASIC=[["name","성명"],["engName","영문이름"],["birth","생년월일"],["gender","성별"],["dept","부서"],["position","직위"],
+const EMP_XLSX_BASIC=[["name","성명"],["engName","영문이름"],["birth","생년월일"],["gender","성별"],["dept","부서"],["worksite","사업장"],["position","직위"],
   ["joinDate","입사일자"],["leaveDate","퇴사일자"],["status","재직상태"],["addr","현주소"],["email","개인이메일"],
   ["phone","전화번호"],["emgContact","비상연락처"],["emgRelation","비상연락 관계"]];
 function buildEmpExcelHeader(){
@@ -6221,7 +6242,7 @@ const EMP_XLSX_SECTIONS=[
 ];
 const EMP_XLSX_COLS=EMP_XLSX_SECTIONS.flatMap(([,fields])=>fields); // [[key,label], ...] 전체 펼침
 const EMP_XLSX_EXAMPLE={
-  name:"홍길동", engName:"HONG GILDONG", birth:"1990-01-15", gender:"남", dept:"경영지원팀", position:"대리",
+  name:"홍길동", engName:"HONG GILDONG", birth:"1990-01-15", gender:"남", dept:"경영지원팀", worksite:"강남사업장", position:"대리",
   joinDate:"2024-03-02", leaveDate:"", status:"재직", addr:"서울특별시 강남구 테헤란로 123", email:"gildong@example.com",
   phone:"02-1234-5678", emgContact:"010-9876-5432", emgRelation:"배우자",
   residentNo:"900115-1234567", foreignType:"내국인", nationality:"대한민국", mobile:"010-1234-5678", addrDetail:"5층 501호",
@@ -6322,6 +6343,7 @@ function renderRecordCard(e){
       <div class="fld"><label>생년월일</label><input ${D(on)} type="text" value="${val(e.birth)}" onchange="empField('birth',this.value)" placeholder="YYYY-MM-DD"></div>
       <div class="fld"><label>성별</label>${on?`<select onchange="empField('gender',this.value)"><option ${e.gender==="남"?"selected":""}>남</option><option ${e.gender==="여"?"selected":""}>여</option><option ${!e.gender?"selected":""} value="">-</option></select>`:`<div class="ro">${val(e.gender)||"—"}</div>`}</div>
       <div class="fld"><label>부서</label><input ${D(on)} value="${val(e.dept)}" onchange="empField('dept',this.value)"></div>
+      <div class="fld"><label>사업장</label><input ${D(on)} value="${val(e.worksite)}" onchange="empField('worksite',this.value)" placeholder="예: 본사 / 강남사업장 / 태백사업장"></div>
       <div class="fld"><label>직위</label><input ${D(on)} value="${val(e.position)}" onchange="empField('position',this.value)"></div>
       <div class="fld"><label>입사일자</label><input ${D(on)} type="text" value="${val(e.joinDate)}" onchange="empField('joinDate',this.value)" placeholder="YYYY-MM-DD"></div>
       <div class="fld"><label>퇴사일자</label><input ${D(on)} type="text" value="${val(e.leaveDate)}" onchange="empField('leaveDate',this.value)" placeholder="재직 중이면 비움"></div>
@@ -7069,6 +7091,7 @@ function recordFormHTML(){
     <td class="lbl">성명</td><td>&nbsp;</td><td class="lbl">영문이름</td><td>&nbsp;</td><td class="photo" rowspan="6">(사진)<br>3.5cm×4.5cm</td></tr>
     <tr><td class="lbl">생년월일</td><td>&nbsp;</td><td class="lbl">성별</td><td>&nbsp;</td></tr>
     <tr><td class="lbl">부서</td><td>&nbsp;</td><td class="lbl">직위</td><td>&nbsp;</td></tr>
+    <tr><td class="lbl">사업장</td><td colspan="3">&nbsp;</td></tr>
     <tr><td class="lbl">입사일자</td><td>&nbsp;</td><td class="lbl">전화번호</td><td>&nbsp;</td></tr>
     <tr><td class="lbl">개인이메일</td><td colspan="3">&nbsp;</td></tr>
     <tr><td class="lbl">현주소</td><td colspan="3">&nbsp;</td></tr>
