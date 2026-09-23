@@ -1519,8 +1519,67 @@ function lightEmployees(){
 //   임직원·급여·회사정보 ... 현재 회사(CURRENT_COMPANY_ID) company_data — 계열사별 완전 분리
 //   REP===CURRENT(단일회사)면 한 번에 저장(기존과 동일).
 // ※ users(승인·권한)는 여기서 저장하지 않음 — 권한 정본은 memberships.
+/* ── 주민등록번호 암호화 (개인정보보호법: 주민등록번호는 암호화하여 저장) ──
+   · 암호화·복호화는 서버(crypto-rrn Edge Function)에서만 수행. 키는 Supabase Secrets(RRN_ENC_KEY)에만 존재.
+   · 저장값: residentNo = "enc:v1:…"(암호문), residentNoMask = "880903-1******"(표시용)
+   · 원문 열람: 민감정보(급여) 권한자·관리자만 서버 복호화 */
+const RRN_FN=`${SUPABASE_URL}/functions/v1/crypto-rrn`;
+const RRN_ENC_PREFIX="enc:v1:";
+function isRrnEnc(v){ return typeof v==="string" && v.startsWith(RRN_ENC_PREFIX); }
+function rrnMask(plain){ const d=String(plain||"").replace(/[^\d]/g,""); if(d.length<7) return d?"*".repeat(d.length):""; return d.slice(0,6)+"-"+d[6]+"******"; }
+function rrnShown(e){ const v=e&&e.residentNo; if(!v) return ""; return isRrnEnc(v) ? (e.residentNoMask||"******-*******") : rrnMask(v); }
+async function rrnCall(body){
+  const tok=await ensureToken();
+  const r=await fetch(RRN_FN,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":SUPABASE_KEY},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok || d.error) throw new Error(d.error||("HTTP "+r.status));
+  return d;
+}
+let rrnSealWarned=false;
+async function sealRrns(){
+  const targets=(EMPLOYEES||[]).filter(e=>e && e.residentNo && !isRrnEnc(e.residentNo));
+  if(!targets.length) return true;
+  try{
+    const plains=targets.map(e=>String(e.residentNo).trim());
+    const d=await rrnCall({action:"encrypt", companyId:CURRENT_COMPANY_ID, values:plains});
+    if(!Array.isArray(d.values) || d.values.length!==targets.length) throw new Error("응답 형식 오류");
+    targets.forEach((e,i)=>{   // 암호화 도중 값이 바뀐 직원은 건너뜀(다음 저장 때 처리)
+      if(String(e.residentNo).trim()===plains[i] && isRrnEnc(d.values[i])){ e.residentNoMask=rrnMask(plains[i]); e.residentNo=d.values[i]; }
+    });
+    try{ persistLocal(); }catch(_){}
+    rrnSealWarned=false;
+    return true;
+  }catch(err){
+    console.warn("주민번호 암호화 실패",err);
+    if(!rrnSealWarned){ rrnSealWarned=true; adminToast("⚠ 주민번호 암호화 실패 — 다음 저장 때 자동 재시도합니다 ("+(err&&err.message||err)+")", false); }
+    return false;
+  }
+}
+async function rrnReveal(){
+  const e=findEmp(openEmpId); if(!e || !isRrnEnc(e.residentNo)) return;
+  if(!canViewHrSensitive()){ alert("주민등록번호 원문 열람 권한이 없습니다."); return; }
+  try{
+    const d=await rrnCall({action:"decrypt", companyId:CURRENT_COMPANY_ID, values:[e.residentNo]});
+    alert(`${e.name||""} 주민등록번호\n\n${(d.values||[])[0]||"-"}\n\n※ 원문은 화면·기기에 저장되지 않습니다.`);
+  }catch(err){ alert("원문 조회에 실패했습니다.\n("+(err&&err.message||err)+")"); }
+}
+function rrnFieldChange(el){
+  const e=findEmp(openEmpId); if(!e) return;
+  const v=String(el.value||"").trim();
+  if(v.includes("*")){ el.value=rrnShown(e); return; }   // 마스킹 표시값 그대로면 변경 없음
+  if(!v){ e.residentNo=""; e.residentNoMask=""; return; }
+  const d=v.replace(/[^\d]/g,"");
+  if(d.length!==13){ alert("주민(외국인)등록번호 13자리를 입력해주세요."); el.value=rrnShown(e); return; }
+  e.residentNo=d.slice(0,6)+"-"+d.slice(6); e.residentNoMask=rrnMask(d);   // 평문은 저장 시 서버에서 즉시 암호화
+}
+function rrnFieldInput(e,on){
+  const enc=isRrnEnc(e.residentNo);
+  return `<div style="display:flex;gap:6px;align-items:center"><input ${D(on)} value="${esc(rrnShown(e))}" onchange="rrnFieldChange(this)" placeholder="000000-0000000" autocomplete="off" style="flex:1;min-width:0">${enc&&canViewHrSensitive()?`<button type="button" class="edit-btn" style="white-space:nowrap;padding:6px 10px;font-size:11px" onclick="rrnReveal()">원문 보기</button>`:""}</div>`
+    + (enc?`<div style="font-size:10.5px;color:#2F6B4A;margin-top:3px">🔒 암호화 저장됨</div>`:(e.residentNo?`<div style="font-size:10.5px;color:#B23B3B;margin-top:3px">⚠ 저장 시 자동 암호화 예정</div>`:""));
+}
 async function cloudPush(){
   if(!CURRENT_COMPANY_ID){ setCloud(false, "⚠ 소속 회사 없음(로컬 저장됨)"); return; }
+  await sealRrns();   // 평문 주민번호가 있으면 저장 전에 서버에서 암호화(실패 시 경고 후 다음 저장 때 재시도)
   const single = !REP_COMPANY_ID || String(REP_COMPANY_ID)===String(CURRENT_COMPANY_ID);
   const H = await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" });
   try{
@@ -6270,6 +6329,7 @@ const EMP_XLSX_EXAMPLE={
 };
 const RC_MONEY_FIELDS=new Set(["avgMonthlyWage","npWage","npFee","hiWage","hiFee","eiWage","eiFee","studentLoanAmt"]);
 function rcFieldInput(e,on,k){
+  if(k==="residentNo") return rrnFieldInput(e,on);
   if(RC_MONEY_FIELDS.has(k)){
     return `<input ${D(on)} value="${withComma(e[k])}" oninput="onMoneyInput(this,v=>empField('${k}',v))" inputmode="numeric" style="text-align:right">`;
   }
