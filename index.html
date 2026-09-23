@@ -609,7 +609,7 @@
   .cdo-bar{display:flex;align-items:center;gap:12px;padding:12px 20px;background:#1a1a1a;flex-shrink:0}
   .cdo-title{color:#fff;font-weight:800;font-size:15px}
   .cdo-tools{margin-left:auto;display:flex;gap:8px}
-  .cdo-scroll{flex:1;overflow-y:auto;padding:24px;display:flex;justify-content:center}
+  .cdo-scroll{flex:1;min-height:0;overflow-y:auto;padding:24px 24px 60px;display:flex;justify-content:center;align-items:flex-start}
   .cdo-paper{background:#fff;width:210mm;max-width:100%;min-height:297mm;padding:14mm 15mm;box-shadow:0 8px 40px rgba(0,0,0,.4);
     font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#3B2419;font-size:10.5px;line-height:1.4}
   /* 계약서 서식 */
@@ -633,6 +633,13 @@
     body *{visibility:hidden}
     #contractDocOverlay,#contractDocOverlay *{visibility:visible}
     #contractDocOverlay{position:absolute;inset:0;background:#fff;display:block}
+    /* 인쇄 잘림 방지: 화면용 100vh·overflow:hidden 해제 → 여러 페이지로 자연스럽게 넘어가게 */
+    html,body{height:auto!important;min-height:0!important;overflow:visible!important;display:block!important;background:#fff!important}
+    body > *:not(#contractDocOverlay){display:none!important}
+    #contractDocOverlay{position:static!important;inset:auto!important;height:auto!important;overflow:visible!important}
+    .cdo-scroll{flex:none!important;height:auto!important;overflow:visible!important}
+    .cdo-paper{transform:none!important;max-width:none!important}
+    .kd-table tr{break-inside:avoid;page-break-inside:avoid}
     .cdo-bar{display:none}
     .cdo-scroll{overflow:visible;padding:0;display:block}
     .cdo-paper{box-shadow:none;width:100%;min-height:auto;padding:0;margin:0;font-size:9.5px;line-height:1.35}
@@ -6502,6 +6509,126 @@ function migrateContract(e){
   if(c.salaryPeriodEnd===undefined) c.salaryPeriodEnd="";
   return c;
 }
+/* ── 네트제(세후 실수령액 보장) ──
+   세후 약정액 → 세전 역산 → 기존 임금항목 자동계산기(calc-wage)로 분할.
+   역산은 기존 공제엔진(calcStatutoryDeductions)을 그대로 반복 대입한다(요율·세액표·산식 변경 없음).
+   비과세: STATUTORY_TAXFREE_LIMITS에 등록된 항목명(식대·육아수당·자가운전보조금 등)은 법정 한도까지만 비과세, 초과분은 과세. */
+const NET_DEFAULT_CLAUSE="상기 임금은 세전 금액이며, 갑은 을에게 매월 세후 실수령액 {NET}원을 보장한다(부양가족 {DEP}인, 계약 체결 시점의 4대보험 요율 및 근로소득 간이세액표 기준). 요율·세법 변경 및 연말정산에 따른 차액의 처리는 갑과 을이 별도로 정한다.";
+function netLabel(w){ return LABEL_ALIAS[val(w.label)]||val(w.label); }
+function netItemsSum(items){ return (items||[]).reduce((s,w)=>s+(parseInt(digits(w.amount))||0),0); }
+/* 비과세 등록 항목명이면 비과세 표시(공제계산기가 한도까지만 제외하도록) */
+function netMarkTaxfree(items){ return (items||[]).map(w=>STATUTORY_TAXFREE_LIMITS[netLabel(w)]?{...w,taxfree:true}:{...w}); }
+/* 보수월액(과세대상) — computeDeductions의 자동 합산과 동일 규칙 */
+function netTaxableBase(items){
+  return (items||[]).reduce((s,w)=>{ const amt=parseInt(digits(w.amount))||0; if(!w.taxfree) return s+amt; return s+taxfreeExcessPortion(netLabel(w),amt); },0);
+}
+function netOf(items,dep){
+  const gross=netItemsSum(items); const base=netTaxableBase(items);
+  const d=calcStatutoryDeductions(base,dep); return {gross,base,net:gross-d.total};
+}
+/* 세후≥목표가 되는 최소 과세 보수월액(이분탐색) */
+function netInverseBase(target,nonTax,dep){
+  let lo=0, hi=Math.max(target*3,1000000);
+  while(lo<hi){ const m=Math.floor((lo+hi)/2); if(m+nonTax-calcStatutoryDeductions(m,dep).total>=target) hi=m; else lo=m+1; }
+  return lo;
+}
+function netClauseText(c){
+  const r=c.netResult||{};
+  return (c.netClause||NET_DEFAULT_CLAUSE).replace(/\{NET\}/g,(r.target||0).toLocaleString("ko-KR")).replace(/\{DEP\}/g,String(r.dep||1));
+}
+function netToggle(v){ const e=findEmp(openEmpId); if(!e) return; const c=migrateContract(e); c.netPay=!!v; save(); renderEmpDetail(); }
+function renderNetPanel(c,on){
+  const chk=!!c.netPay, r=c.netResult;
+  const curDep=parseInt(c.dedFamilyCount)||1;
+  const stale=r && (netItemsSum(c.wageItems)!==r.gross || curDep!==r.dep);
+  const tfNames=Object.keys(STATUTORY_TAXFREE_LIMITS).join("·");
+  return `<div class="rc-sec" style="background:#F8F2ED;border-color:#DFCEC2;margin:0 0 14px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px">
+      <input type="checkbox" ${D(on)} ${chk?"checked":""} onchange="netToggle(this.checked)" style="width:auto"> 네트제(세후 실수령액 보장) 계약
+    </label>
+    ${chk?`
+    <div style="font-size:11px;color:var(--faint);line-height:1.6;margin:8px 0 10px">
+      ① 비과세 항목(육아수당·자가운전보조금 등)은 아래 급여 항목표에 <b>먼저 추가</b>하세요. 식대는 자동계산기의 '식대(비과세)' 칸에 입력합니다.<br>
+      ② 비과세 인식 항목명: ${esc(tfNames)} — 법정 한도까지만 비과세, 초과분은 과세됩니다.<br>
+      ③ 부양가족수는 아래 🔒 공제내역 계산기 값(현재 <b>${curDep}인</b>)을 사용합니다.
+    </div>
+    <div class="fg">
+      <div class="fld"><label>세후 월 약정액(원)</label><input ${D(on)} value="${withComma(c.netTarget)}" oninput="onMoneyInput(this,v=>empCon('netTarget',v))" placeholder="예) 10,000,000" inputmode="numeric" style="text-align:right"></div>
+    </div>
+    ${on?`<button class="btn" style="margin-top:8px" onclick="applyNetCalc()">💰 세후 → 세전 역산 + 임금 분할</button>`:""}
+    ${r?`<div style="margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.7;background:${stale?"#FBEAEA":"#EAF3EC"};color:${stale?"#B23B3B":"#2F6B4A"};border:1px solid ${stale?"#F0B8B8":"#BFDFC9"}">
+      ${stale?`⚠ 역산 이후 급여 항목 또는 부양가족수가 바뀌었습니다. <b>다시 역산</b>하세요.<br>`:""}
+      세후 약정 <b>${r.target.toLocaleString("ko-KR")}원</b> (부양가족 ${r.dep}인) → 세전 월 <b>${r.gross.toLocaleString("ko-KR")}원</b> · 연 ${(r.gross*12).toLocaleString("ko-KR")}원<br>
+      역산 결과 세후 ${r.net.toLocaleString("ko-KR")}원 ${r.net===r.target?"✓ 약정액 일치":`✓ 약정액 충족(+${(r.net-r.target).toLocaleString("ko-KR")}원, 원 단위 끝전)`}
+    </div>`:""}
+    <div class="fld full" style="margin-top:10px"><label>근로계약서 특약 문구 <span style="font-weight:400;color:var(--faint)">— {NET}·{DEP}는 약정액·부양가족수로 자동 치환</span></label>
+      <textarea ${D(on)} rows="3" onchange="empCon('netClause',this.value)">${esc(c.netClause||NET_DEFAULT_CLAUSE)}</textarea></div>
+    `:""}
+  </div>`;
+}
+async function applyNetCalc(){
+  const e=findEmp(openEmpId); if(!e) return;
+  const c=migrateContract(e);
+  const target=parseInt(digits(c.netTarget))||0;
+  if(!target){ alert("세후 월 약정액을 입력해주세요."); return; }
+  const dep=parseInt(c.dedFamilyCount)||1;
+  if(!confirm(`세후 월 ${target.toLocaleString("ko-KR")}원 · 부양가족 ${dep}인(본인 포함) 기준으로 세전을 역산하고,\n임금항목 자동계산기로 급여 항목을 다시 분할합니다.\n(기존 자동계산 항목은 새 결과로 바뀝니다. 부양가족수가 다르면 취소 후 공제내역 계산기에서 먼저 수정하세요)\n\n계속할까요?`)) return;
+  // 자동계산 대상이 아닌 사전 고정항목(육아수당 등) + 식대의 비과세 합계로 1차 역산
+  const pre=mergeCalcTaxfree(c).filter(w=>!AUTO_WAGE_LABELS.includes(val(w.label)));
+  const meal=parseInt(digits(c.calcMeal))||0;
+  const nonTax=pre.reduce((s,w)=>{ if(!w.taxfree) return s; const a=parseInt(digits(w.amount))||0; return s+(a-taxfreeExcessPortion(netLabel(w),a)); },0)
+             + (meal-taxfreeExcessPortion("식대",meal));
+  let G=netInverseBase(target,nonTax,dep)+nonTax;
+  let done=null;
+  for(let k=0;k<12;k++){
+    const inp={ wageAnnual:String(G*12), calcStdHours:c.calcStdHours, calcOtHours:c.calcOtHours, calcNightHours:c.calcNightHours, calcHolidayHours:c.calcHolidayHours, calcLeaveHours:c.calcLeaveHours, calcMeal:c.calcMeal, wageItems:pre };
+    const r=await serverCalcWage(inp);
+    if(!r){ alert("서버에서 급여 계산을 완료하지 못했습니다.\n인터넷 연결을 확인하고 잠시 후 다시 시도해 주세요."); return; }
+    if(r.error){ alert(r.error); return; }
+    const items=netMarkTaxfree(r.wageItems||[]);
+    const m=netOf(items,dep);
+    if(m.net>=target){ done={r,items,m}; break; }
+    G+=Math.max(1,target-m.net);   // 자동계산 끝전(반올림)으로 부족하면 부족분만큼 올려 재계산
+  }
+  if(!done){ alert("세후 약정액에 맞는 세전 금액을 찾지 못했습니다. 입력값을 확인해주세요."); return; }
+  c.wageAnnual=String(G*12);
+  c.wageItems=done.items; c.wageMonthly=done.r.wageMonthly; c.calcHourlyWage=done.r.calcHourlyWage;
+  c.dedBaseWage=""; c.dedFamilyCount=String(dep);
+  c.netResult={target, gross:done.m.gross, net:done.m.net, dep, at:new Date().toISOString()};
+  save();
+  computeDeductions();   // 기존 공제내역 계산기로 결과 검증·표시(렌더 포함)
+  adminToast(`네트 역산 완료: 세전 월 ${done.m.gross.toLocaleString("ko-KR")}원 ✓`);
+}
+/* ── 스케줄(교대) 근무: 근무형태별 시업·종업·휴게 → 근로계약서 표기 ── */
+const SHIFT_DEFAULTS=[{name:"데이(D)",start:"07:00",end:"15:30",breakMin:"30"},{name:"이브닝(E)",start:"14:30",end:"23:00",breakMin:"30"},{name:"나이트(N)",start:"22:30",end:"07:30",breakMin:"60"}];
+function shiftMin(t){ const m=String(t||"").match(/^(\d{1,2}):(\d{2})$/); return m?(+m[1])*60+(+m[2]):null; }
+/* 1일 근로시간(표시용) = 종업-시업(자정 넘김 보정) - 휴게 */
+function shiftHours(r){
+  const a=shiftMin(r.start), b=shiftMin(r.end); if(a===null||b===null) return "";
+  let d=b-a; if(d<=0) d+=1440; d-=(parseInt(r.breakMin)||0);
+  return d>0 ? String(Math.round(d/60*100)/100) : "";
+}
+function shiftToggle(v){ const e=findEmp(openEmpId); if(!e) return; const c=migrateContract(e); c.shiftOn=!!v; if(c.shiftOn && !(c.shifts&&c.shifts.length)) c.shifts=SHIFT_DEFAULTS.map(x=>({...x})); save(); renderEmpDetail(); }
+function shiftSet(i,k,v){ const e=findEmp(openEmpId); if(e&&e.contract&&e.contract.shifts&&e.contract.shifts[i]){ e.contract.shifts[i][k]=v; save(); renderEmpDetail(); } }
+function shiftAdd(){ const e=findEmp(openEmpId); if(!e) return; const c=migrateContract(e); (c.shifts=c.shifts||[]).push({name:"",start:"",end:"",breakMin:""}); save(); renderEmpDetail(); }
+function shiftDel(i){ const e=findEmp(openEmpId); if(e&&e.contract&&e.contract.shifts){ e.contract.shifts.splice(i,1); save(); renderEmpDetail(); } }
+function renderShiftPanel(c,on){
+  const rows=(c.shifts||[]).map((r,i)=>`<tr>
+    <td><input ${D(on)} value="${esc(val(r.name))}" onchange="shiftSet(${i},'name',this.value)" placeholder="예: 데이(D)"></td>
+    <td><input ${D(on)} value="${esc(val(r.start))}" onchange="shiftSet(${i},'start',this.value)" placeholder="07:00"></td>
+    <td><input ${D(on)} value="${esc(val(r.end))}" onchange="shiftSet(${i},'end',this.value)" placeholder="15:30"></td>
+    <td><input ${D(on)} value="${esc(val(r.breakMin))}" onchange="shiftSet(${i},'breakMin',this.value)" placeholder="30" inputmode="numeric"></td>
+    <td style="text-align:center;font-weight:700">${shiftHours(r)?shiftHours(r)+"시간":"—"}</td>
+    ${on?`<td><button class="row-del" onclick="shiftDel(${i})">×</button></td>`:""}
+  </tr>`).join("");
+  return `<label style="display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px;margin-top:10px">
+      <input type="checkbox" ${D(on)} ${c.shiftOn?"checked":""} onchange="shiftToggle(this.checked)" style="width:auto"> 스케줄(교대) 근무 — 근무형태별 시업·종업시간 명시
+    </label>
+    ${c.shiftOn?`<div style="font-size:11px;color:var(--faint);margin:6px 0 8px">근무형태별 시업·종업시간(24시간제, 예 22:30)과 휴게(분)를 입력하세요. 자정을 넘기는 근무는 자동 보정됩니다. 근로계약서에 이 표가 그대로 인쇄됩니다.</div>
+    <div class="rtable"><table><thead><tr><th>근무형태</th><th>시업</th><th>종업</th><th>휴게(분)</th><th style="text-align:center">1일 근로시간</th>${on?"<th></th>":""}</tr></thead>
+      <tbody>${rows||`<tr><td colspan="${on?6:5}" style="color:var(--faint);text-align:center;padding:12px">근무형태가 없습니다</td></tr>`}</tbody></table></div>
+    ${on?`<button class="rtable-add" onclick="shiftAdd()">+ 근무형태 추가</button>`:""}`:""}`;
+}
 function renderContract(e){
   const on=empEdit; const c=migrateContract(e);
   const wageRows=(c.wageItems||[]).map((w,i)=>`<tr>
@@ -6557,10 +6684,11 @@ function renderContract(e){
   <div class="rc-sec"><h3>② 소정근로시간 <span class="badge">제17조 2호</span></h3>
     <div class="fg c4">
       <div class="fld"><label>근무일</label><input ${D(on)} value="${val(c.workDays)}" onchange="empCon('workDays',this.value)"></div>
-      <div class="fld"><label>시업시간</label><input ${D(on)} value="${val(c.workStart)}" onchange="empCon('workStart',this.value)"></div>
+      ${c.shiftOn?"":`<div class="fld"><label>시업시간</label><input ${D(on)} value="${val(c.workStart)}" onchange="empCon('workStart',this.value)"></div>
       <div class="fld"><label>종업시간</label><input ${D(on)} value="${val(c.workEnd)}" onchange="empCon('workEnd',this.value)"></div>
-      <div class="fld"><label>휴게시간</label><input ${D(on)} value="${val(c.breakTime)}" onchange="empCon('breakTime',this.value)"></div>
+      <div class="fld"><label>휴게시간</label><input ${D(on)} value="${val(c.breakTime)}" onchange="empCon('breakTime',this.value)"></div>`}
     </div>
+    ${renderShiftPanel(c,on)}
   </div>
 
   <div class="rc-sec"><h3>③ 휴일 · ④ 연차유급휴가 <span class="badge">제17조 3·4호</span></h3>
@@ -6571,6 +6699,7 @@ function renderContract(e){
   </div>
 
   <div class="rc-sec"><h3>① 임금 및 수당 <span class="badge">제17조 1호</span></h3>
+    ${renderNetPanel(c,on)}
 
     <div class="fg" style="margin-bottom:14px">
       <div class="fld"><label>연봉(원) <span style="font-weight:400;color:var(--faint)">— 아래 급여 항목 전체의 연간 합계 기준</span></label><input ${D(on)} value="${withComma(c.wageAnnual)}" oninput="onMoneyInput(this,v=>empCon('wageAnnual',v))" placeholder="" inputmode="numeric" style="text-align:right"></div>
@@ -6597,10 +6726,12 @@ function renderContract(e){
     <div class="rc-sec" style="background:#F8F2ED;border-color:#DFCEC2;margin:16px 0 14px">
       <h3 style="margin-bottom:4px">🧮 임금항목 자동계산기</h3>
       <div style="font-size:11px;color:var(--faint);margin-bottom:10px">위 연봉에서, 위에 미리 추가해둔 급여 항목(육아수당 등)의 연간 합계(×12)를 뺀 나머지 금액을 기준으로 통상시급을 역산해 기본급·연장·야간·휴일·연차수당을 계산합니다. (급여작업 엑셀과 동일한 산식 · 가산임금 배율 고정)</div>
+      <div style="font-size:11px;color:var(--faint);margin:-4px 0 10px">💡 비과세 항목(식대·육아수당·자가운전보조금·연구개발비)은 각 <b>월 20만원까지 비과세</b>, 초과분은 과세됩니다. 입력한 항목은 급여 항목표에 비과세로 자동 반영됩니다. (항목을 없애려면 0 입력)</div>
       <div class="fg c4">
         <div class="fld"><label>소정근로시간(월)</label><input ${D(on)} value="${val(c.calcStdHours)||"209"}" onchange="empCon('calcStdHours',this.value)" placeholder="209" inputmode="decimal"></div>
         <div class="fld"><label>연장근로시간(월,고정)</label><input ${D(on)} value="${val(c.calcOtHours)}" onchange="empCon('calcOtHours',this.value)" placeholder="0" inputmode="decimal"></div>
         <div class="fld"><label>식대(비과세,원)</label><input ${D(on)} value="${withComma(c.calcMeal)}" oninput="onMoneyInput(this,v=>empCon('calcMeal',v))" placeholder="0" inputmode="numeric" style="text-align:right"></div>
+        ${CALC_TF_FIELDS.map(f=>`<div class="fld"><label>${f.label}(비과세,원)</label><input ${D(on)} value="${withComma(calcTfShown(c,f))}" oninput="onMoneyInput(this,v=>empCon('${f.key}',v))" placeholder="0" inputmode="numeric" style="text-align:right"></div>`).join("")}
         <div class="fld"><label>야간근로시간(월)</label><input ${D(on)} value="${val(c.calcNightHours)}" onchange="empCon('calcNightHours',this.value)" placeholder="0" inputmode="decimal"></div>
         <div class="fld"><label>휴일근로시간(월)</label><input ${D(on)} value="${val(c.calcHolidayHours)}" onchange="empCon('calcHolidayHours',this.value)" placeholder="0" inputmode="decimal"></div>
         <div class="fld"><label>연차시간(월)</label><input ${D(on)} value="${val(c.calcLeaveHours)}" onchange="empCon('calcLeaveHours',this.value)" placeholder="0" inputmode="decimal"></div>
@@ -6675,6 +6806,25 @@ const INCOME_TAX_BASE_10M=[1507400,1431570,1200840,1170840,1140840,1110840,10808
    야간=ROUNDDOWN(통상시급×0.5×야간) 휴일=ROUNDDOWN(통상시급×1.5×휴일) 연차=ROUNDUP(통상시급×연차) */
 const AUTO_WAGE_LABELS=["기본급","식대(비과세)","고정연장근로수당","야간근로수당","휴일근로수당","연차수당"];
 
+/* 자동계산기 비과세 입력칸(식대 외) — 계산 시 급여 항목표의 동일 항목을 대체하는 고정항목으로 전달(산식 변경 없음) */
+const CALC_TF_FIELDS=[{key:"calcTfChild",label:"육아수당"},{key:"calcTfCar",label:"자가운전보조금"},{key:"calcTfRnd",label:"연구개발비"}];
+function calcTfShown(c,f){
+  if(c[f.key]!==undefined && c[f.key]!=="") return c[f.key];
+  const w=(c.wageItems||[]).find(x=>val(x.label)===f.label); return w?digits(w.amount):"";
+}
+/* 입력칸 값(비어있지 않은 것만)으로 급여 항목표의 동일 항목을 교체(0이면 삭제) → 비과세 표시 */
+function mergeCalcTaxfree(c){
+  let items=(c.wageItems||[]).map(w=>({...w}));
+  CALC_TF_FIELDS.forEach(f=>{
+    const raw=c[f.key]; if(raw===undefined || raw==="") return;
+    const amt=parseInt(digits(raw))||0;
+    const idx=items.findIndex(x=>val(x.label)===f.label);
+    if(amt<=0){ if(idx>=0) items.splice(idx,1); return; }
+    const row={label:f.label, amount:String(amt), note:"비과세(월 20만원 한도, 초과분 과세)", taxfree:true};
+    if(idx>=0) items[idx]={...items[idx],...row}; else items.unshift(row);
+  });
+  return netMarkTaxfree(items);
+}
 async function serverCalcWage(inp){
   try{
     const res=await fetch(`${SUPABASE_URL}/functions/v1/calc-wage`, { method:"POST", headers: await sbHeaders(), body: JSON.stringify(inp) });
@@ -6687,11 +6837,11 @@ async function serverCalcWage(inp){
 async function applyWageCalc(){
   const e=findEmp(openEmpId); if(!e) return;
   const c=migrateContract(e);
-  const inp={ wageAnnual:c.wageAnnual, calcStdHours:c.calcStdHours, calcOtHours:c.calcOtHours, calcNightHours:c.calcNightHours, calcHolidayHours:c.calcHolidayHours, calcLeaveHours:c.calcLeaveHours, calcMeal:c.calcMeal, wageItems:c.wageItems };
+  const inp={ wageAnnual:c.wageAnnual, calcStdHours:c.calcStdHours, calcOtHours:c.calcOtHours, calcNightHours:c.calcNightHours, calcHolidayHours:c.calcHolidayHours, calcLeaveHours:c.calcLeaveHours, calcMeal:c.calcMeal, wageItems:mergeCalcTaxfree(c) };
   const r=await serverCalcWage(inp);
   if(!r){ alert("서버에서 급여 계산을 완료하지 못했습니다.\n인터넷 연결을 확인하고 잠시 후 다시 시도해 주세요."); return; }
   if(r.error){ alert(r.error); return; }
-  c.wageItems=r.wageItems; c.wageMonthly=r.wageMonthly; c.calcHourlyWage=r.calcHourlyWage;
+  c.wageItems=netMarkTaxfree(r.wageItems||[]); c.wageMonthly=r.wageMonthly; c.calcHourlyWage=r.calcHourlyWage;
   save(); renderEmpDetail();
   adminToast("급여 자동계산: 서버 정본 ✓");
 }
@@ -6786,6 +6936,13 @@ function moneyN(v){ const n=parseInt(String(v||"").replace(/[^\d]/g,"")); return
 function openContractDoc(){
   const e=findEmp(openEmpId); if(!e){ return; }
   const c=migrateContract(e);
+  if(c.netPay){
+    const r=c.netResult;
+    if(!r){ alert("네트제 계약입니다. 먼저 [세후 → 세전 역산 + 임금 분할]을 실행해주세요.\n(근로계약서에 세후 실수령액을 표기하려면 역산 결과가 필요합니다)"); return; }
+    if(netItemsSum(c.wageItems)!==r.gross || (parseInt(c.dedFamilyCount)||1)!==r.dep){
+      if(!confirm("역산 이후 급여 항목 또는 부양가족수가 바뀌어 세전 금액과 세후 실수령액이 맞지 않을 수 있습니다.\n다시 역산한 뒤 생성하는 것을 권장합니다. 그래도 계약서를 생성할까요?")) return;
+    }
+  }
   document.getElementById("contractPaper").innerHTML=buildContractHTML(e,c);
   document.getElementById("contractDocOverlay").classList.add("show");
 }
@@ -6832,6 +6989,7 @@ function buildContractHTML(e,c){
   const wageItemsFiltered=(c.wageItems||[]).filter(w=>w.label||w.amount);
   const wageItemCount=wageItemsFiltered.length;
   const wageSumForDoc=wageItemsFiltered.reduce((s,w)=>s+(parseInt(String(w.amount||"").replace(/[^\d]/g,""))||0),0);
+  const netDocOn=!!(c.netPay&&c.netResult&&c.netResult.target);   // 네트제: 세후 실수령액을 임금표에 명시
   const wageRows=wageItemsFiltered.map(w=>`
     <tr><td class="lbl2">${esc(w.label||"")}</td>
       <td class="ctr" style="width:150px;white-space:nowrap">${moneyN(w.amount)} 원</td>
@@ -6881,16 +7039,19 @@ function buildContractHTML(e,c){
         <table style="width:100%;border-collapse:collapse">
           <tr>
             <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">근무일</th>
-            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">시업시간</th>
-            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">종업시간</th>
-            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">휴게시간</th>
+            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">${(c.shiftOn&&(c.shifts||[]).length)?"근무형태 · 시업~종업":"시업시간"}</th>
+            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">${(c.shiftOn&&(c.shifts||[]).length)?"휴게시간":"종업시간"}</th>
+            <th class="kd-wage" style="border:1px solid #6A4634;padding:4px">${(c.shiftOn&&(c.shifts||[]).length)?"1일 근로시간":"휴게시간"}</th>
           </tr>
-          <tr>
+          ${(c.shiftOn&&(c.shifts||[]).length)?(()=>{ const B='border:1px solid #6A4634;padding:4px'; const list=c.shifts.filter(r=>r.name||r.start||r.end);
+            return list.map((r,i)=>`<tr>${i===0?`<td class="ctr" style="${B}" rowspan="${list.length}">${esc(c.workDays||"근무스케줄표에 따름")}</td>`:""}<td class="ctr" style="${B}">${esc(r.name||"")} ${esc(r.start||"")} ~ ${esc(r.end||"")}</td><td class="ctr" style="${B}">${esc(r.breakMin||"0")}분</td><td class="ctr" style="${B}">${shiftHours(r)?shiftHours(r)+"시간":"—"}</td></tr>`).join("")
+            + `<tr><td colspan="4" class="kd-note" style="${B}">각 근무형태의 배치는 갑이 작성하여 사전에 통보하는 근무스케줄표에 따른다.</td></tr>`; })()
+          :`<tr>
             <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.workDays||"주5일(월~금)")}</td>
             <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.workStart||"09:00")}</td>
             <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.workEnd||"18:00")}</td>
             <td class="ctr" style="border:1px solid #6A4634;padding:4px">${esc(c.breakTime||"12:30~13:30")}</td>
-          </tr>
+          </tr>`}
         </table>
       </td>
     </tr>
@@ -6906,17 +7067,19 @@ function buildContractHTML(e,c){
       <td colspan="4" class="kd-note">${esc(c.annualLeave||"근로기준법 제60조에 따라 부여한다.")}</td>
     </tr>
     <tr>
-      <td class="kd-sec-lbl" rowspan="${2+(wageItemCount>0?wageItemCount:1)+(wageSumForDoc>0?1:0)}">임금 및 수당</td>
+      <td class="kd-sec-lbl" rowspan="${2+(wageItemCount>0?wageItemCount:1)+(wageSumForDoc>0?1:0)+(netDocOn?1:0)}">임금 및 수당</td>
       <td class="lbl">월 급 여</td><td class="ctr">${moneyN(c.wageMonthly)} 원</td>
       <td class="lbl">연 봉</td><td class="ctr">${moneyN(c.wageAnnual)} 원</td>
     </tr>
     <tr><td colspan="4" class="ctr" style="background:#F3EAE3;font-weight:700">월 고정 급여 산출 내역</td></tr>
     ${wageRows||`<tr><td colspan="4" class="ctr" style="color:#888">산출내역 미입력</td></tr>`}
     ${wageSumForDoc?`<tr style="background:#F4ECE6;font-weight:800"><td class="lbl2">합 계</td><td class="ctr" style="width:150px;white-space:nowrap">${wageSumForDoc.toLocaleString("ko-KR")} 원</td><td colspan="2" class="kd-note">월 고정급여 합계</td></tr>`:""}
+    ${netDocOn?`<tr style="background:#EAF3EC;font-weight:800"><td class="lbl2">세후 실수령액</td><td class="ctr" style="width:150px;white-space:nowrap">${c.netResult.target.toLocaleString("ko-KR")} 원</td><td colspan="2" class="kd-note">네트제 약정 — 매월 세후 실수령액 보장 (부양가족 ${c.netResult.dep}인, 계약 체결 시점 4대보험 요율·간이세액표 기준)</td></tr>`:""}
     <tr>
       <td class="lbl">임금 지급</td>
       <td colspan="4" class="kd-note">월 급여는 당월 1일부터 말일까지 근무에 대한 급여를 익월 지정일에 을이 지정하는 통장 계좌로 지급하거나 직접 지급한다.</td>
     </tr>
+    ${c.netPay&&c.netResult?`<tr><td class="lbl">네트 특약</td><td colspan="4" class="kd-note">${esc(netClauseText(c))}</td></tr>`:""}
     <tr>
       <td class="lbl">비밀유지</td>
       <td colspan="4" class="kd-note">
