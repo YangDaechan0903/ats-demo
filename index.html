@@ -830,6 +830,14 @@
     </div>
   </div>
 
+  <div class="gnb-item" data-axis="report">
+    <button class="gnb-btn" onclick="toggleAxis('report')">보고 <span style="font-size:9px">▾</span></button>
+    <div class="gnb-menu" data-axis="report">
+      <div class="mlabel">보고</div>
+      <button data-mod="report" onclick="goModule('report');rpShow('payroll')">📊 급여 대시보드</button>
+    </div>
+  </div>
+
   <div class="gnb-item" data-axis="company">
     <button class="gnb-btn" onclick="goModule('company')">🏢 사업자정보</button>
   </div>
@@ -849,7 +857,7 @@
       <div class="home-wrap">
         <div class="home-hero">
           <h1>안녕하세요<span id="homeUserName"></span> 👋</h1>
-          <p>e-HRIS 5대 영역 중 이동할 곳을 선택하세요.</p>
+          <p>e-HRIS 영역 중 이동할 곳을 선택하세요.</p>
         </div>
         <div class="home-grid" id="homeGrid"></div>
       </div>
@@ -998,6 +1006,12 @@
     <div class="mod-body"><div class="soon-wrap"><div class="ico">📊</div><div class="soon-tag">추후 개발 예정</div>
       <h2>평가</h2>
       <p>목표관리(MBO)·역량평가·다면평가 등 성과평가 체계를 관리하는 모듈입니다. 다음 단계에서 구현됩니다.</p></div></div>
+  </div>
+  <div id="hris-report" class="module">
+    <div class="mod-body">
+      <div class="mod-head"><h1 id="rpTitle">📊 급여 대시보드</h1><p>두 달을 골라 부서·사업장·사원·급여항목별 인건비 변화를 한눈에 비교합니다.</p></div>
+      <div id="reportRoot"></div>
+    </div>
   </div>
   <div id="hris-reward" class="module">
     <div class="mod-head">
@@ -1928,6 +1942,7 @@ function applyPerms(){
   const devEl=document.querySelector('.gnb-item[data-axis="develop"]'); if(devEl) devEl.style.display=hasPerm("develop")?"":"none";
   const evEl=document.querySelector('.gnb-item[data-axis="evaluate"]'); if(evEl) evEl.style.display=hasPerm("evaluate")?"":"none";
   const rwEl=document.querySelector('.gnb-item[data-axis="reward"]'); if(rwEl) rwEl.style.display=hasPerm("reward")?"":"none";
+  const rpEl=document.querySelector('.gnb-item[data-axis="report"]'); if(rpEl) rpEl.style.display=hasPerm("reward")?"":"none";
   // 관리자 메뉴
   const adminEl=document.getElementById("gnbAdmin");
   if(adminEl) adminEl.style.display=isAdmin()?"":"none";
@@ -3243,8 +3258,8 @@ document.addEventListener('keydown',e=>{if(e.key==="Escape"){closeItv();closeDet
    e-HRIS 확장 — 모듈 전환 · 임직원 · 인사기록카드 · 근로계약 · 노무
    (기존 ATS 코드는 위에 그대로. 아래는 전부 추가분)
    ═══════════════════════════════════════════════════════════ */
-const MODULES=["home","ats","contract","develop","evaluate","reward","employees","company","admin","platform"];
-const AXIS_OF={ats:"acquire",contract:"acquire",develop:"develop",evaluate:"evaluate",reward:"reward",employees:"retain",labor:"retain",company:"company",admin:"admin",platform:"platform"};
+const MODULES=["home","ats","contract","develop","evaluate","reward","employees","report","company","admin","platform"];
+const AXIS_OF={ats:"acquire",contract:"acquire",develop:"develop",evaluate:"evaluate",reward:"reward",employees:"retain",labor:"retain",report:"report",company:"company",admin:"admin",platform:"platform"};
 
 function closeAllGnbMenus(){
   document.querySelectorAll(".gnb-menu.open").forEach(m=>m.classList.remove("open"));
@@ -3283,6 +3298,7 @@ function goModule(mod){
   // 권한 체크: admin은 관리자만, 나머지는 hasPerm
   if(mod==="admin" && !isAdmin()){ mod="ats"; }
   if(mod==="platform" && !IS_PLATFORM_ADMIN){ mod="home"; }
+  if(mod==="report" && !hasPerm("reward")){ mod="home"; }   // 보고(급여 대시보드)는 급여 권한자만
   if(["ats","contract","employees"].includes(mod) && !hasPerm(mod)){
     const fb=["ats","contract","employees"].find(m=>hasPerm(m));
     mod = fb || "develop";   // 접근 가능한 게 없으면 안내 탭
@@ -3306,10 +3322,168 @@ function goModule(mod){
   else if(mod==="employees") renderEmployees();
   else if(mod==="contract") renderContractList();
   else if(mod==="reward") renderPayrollList();
+  else if(mod==="report") renderReport();
   else if(mod==="develop") renderTraining();
   else if(mod==="company") renderCompanyInfo();
   else if(mod==="admin"){ renderAdmin(); loadMemberships().then(renderAdmin); }
   else if(mod==="platform"){ renderPlatform(); Promise.all([loadCompanies(), loadCompanyOwners()]).then(renderPlatform); }
+}
+
+/* ═══════════════════════ 보고 > 급여 대시보드 ═══════════════════════
+   급여작업(PAYROLL_RUNS)의 지급액을 집계만 한다(급여 계산 로직은 건드리지 않음).
+   같은 귀속월의 모든 작업(급여·상여 등)을 합산. 지급액 = 지급항목 합계(세전, 공제 전). */
+let RP={tab:"payroll", a:"", b:"", by:"dept", run:"all"};
+const RP_BY=[["dept","부서별"],["site","사업장별"],["emp","사원별"],["item","급여항목별"]];
+function rpShow(t){ RP.tab=t||"payroll"; renderReport(); }
+function rpSet(k,v){ RP[k]=v; renderReport(); }
+function rpSwap(){ const t=RP.a; RP.a=RP.b; RP.b=t; renderReport(); }
+function rpRuns(){ return (PAYROLL_RUNS||[]).filter(r=>r && r.yearMonth && (RP.run==="all" || (r.category||"급여")===RP.run)); }
+function rpMonths(){ return [...new Set(rpRuns().map(r=>r.yearMonth))].sort(); }
+function rpAgg(ym,by){
+  const m=new Map(); let total=0; const emps=new Set();
+  const add=(k,v,label)=>{ if(!v) return; const o=m.get(k)||{label:label||k,v:0}; o.v+=v; m.set(k,o); };
+  rpRuns().filter(r=>r.yearMonth===ym).forEach(run=>(run.rows||[]).forEach(row=>{
+    const t=rowPayTotal(row); total+=t; emps.add(String(row.empId));
+    if(by==="item"){
+      PAY_COLUMNS.forEach(k=>add(k,(row.pay&&row.pay[k])?row.pay[k].v:0));
+      (row.payExtra||[]).forEach(x=>{ const l=String(x.label||"추가항목"); add("x:"+l, parseInt(digits(x.amount))||0, l); });
+    } else if(by==="dept") add(row.dept||"(부서 미지정)", t);
+    else if(by==="site"){ const e=findEmp(row.empId); add((e&&e.worksite)||"(사업장 미지정)", t); }
+    else add("e:"+row.empId, t, (row.name||"")+(row.dept?" · "+row.dept:""));
+  }));
+  return {m,total,head:emps.size};
+}
+function rpWon(v){ return (Math.round(v)||0).toLocaleString("ko-KR"); }
+function rpMan(v){ const a=Math.abs(v); if(a>=100000000) return (v/100000000).toFixed(2).replace(/\.?0+$/,"")+"억"; if(a>=10000) return Math.round(v/10000).toLocaleString("ko-KR")+"만"; return rpWon(v); }
+function rpPct(a,b){ if(!a) return b?"신규":"—"; const p=(b-a)/Math.abs(a)*100; return (p>0?"+":"")+p.toFixed(1)+"%"; }
+function rpDiffColor(d){ return d>0?"#C0504D":(d<0?"#2F6B8A":"#888"); }
+function rpRows(){
+  const A=rpAgg(RP.a,RP.by), B=rpAgg(RP.b,RP.by);
+  const keys=new Set([...A.m.keys(),...B.m.keys()]);
+  const rows=[...keys].map(k=>{ const a=(A.m.get(k)||{}).v||0, b=(B.m.get(k)||{}).v||0; return {label:(B.m.get(k)||A.m.get(k)).label, a, b, d:b-a}; });
+  rows.sort((x,y)=>Math.abs(y.d)-Math.abs(x.d) || (y.b-x.b));
+  return {A,B,rows};
+}
+const RP_PALETTE=["#6B4A3A","#2F6B8A","#B07A52","#6FA3BF","#9A7B69","#C9A98F","#DDD3CB"];
+function rpBarSvg(rows){   // 두 달 나란히 비교(가로 막대)
+  const top=rows.slice(0,15), W=1000, LW=210, RW=150, BW=W-LW-RW-20, RH=64, H=top.length*RH+50;
+  const max=Math.max(1,...top.flatMap(r=>[Math.abs(r.a),Math.abs(r.b)]));
+  const bars=top.map((r,i)=>{ const y=46+i*RH, wa=Math.abs(r.a)/max*BW, wb=Math.abs(r.b)/max*BW;
+    return `<text x="${LW-14}" y="${y+27}" text-anchor="end" font-size="16" font-weight="700" fill="#3B2419">${esc(r.label.length>13?r.label.slice(0,12)+"…":r.label)}</text>
+      <rect x="${LW}" y="${y+2}" width="${Math.max(2,wa).toFixed(1)}" height="22" rx="4" fill="#D8C8BC"/>
+      <text x="${LW+wa+8}" y="${y+19}" font-size="14" fill="#8A7466">${rpMan(r.a)}</text>
+      <rect x="${LW}" y="${y+28}" width="${Math.max(2,wb).toFixed(1)}" height="22" rx="4" fill="#6B4A3A"/>
+      <text x="${LW+wb+8}" y="${y+45}" font-size="15" font-weight="800" fill="#3B2419">${rpMan(r.b)}</text>
+      <text x="${W-8}" y="${y+33}" text-anchor="end" font-size="17" font-weight="800" fill="${rpDiffColor(r.d)}">${r.d>0?"▲":(r.d<0?"▼":"")} ${r.d?rpMan(Math.abs(r.d)):"변동 없음"}</text>`; }).join("");
+  const legend=`<rect x="${LW}" y="10" width="16" height="16" rx="3" fill="#D8C8BC"/><text x="${LW+22}" y="23" font-size="15" fill="#6B5A4E">${esc(RP.a)}</text>
+    <rect x="${LW+120}" y="10" width="16" height="16" rx="3" fill="#6B4A3A"/><text x="${LW+142}" y="23" font-size="15" fill="#3B2419" font-weight="800">${esc(RP.b)}</text>
+    <text x="${W-8}" y="23" text-anchor="end" font-size="14" fill="#8A7466">증감</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:1200px;display:block">${legend}${bars}</svg>`;
+}
+function rpDivergeSvg(rows){   // 증감 요인: 늘어난 곳(오른쪽·빨강) / 줄어든 곳(왼쪽·파랑)
+  const top=rows.filter(r=>r.d!==0).slice(0,10);
+  if(!top.length) return `<div style="font-size:15px;color:var(--faint);padding:30px 0;text-align:center">두 달 사이 변동이 없습니다.</div>`;
+  const W=640, LW=150, RH=50, H=top.length*RH+20, cx=LW+(W-LW)/2, half=(W-LW)/2-70;
+  const max=Math.max(1,...top.map(r=>Math.abs(r.d)));
+  const rowsSvg=top.map((r,i)=>{ const y=10+i*RH, w=Math.abs(r.d)/max*half, pos=r.d>0, x=pos?cx:cx-w, col=pos?"#C0504D":"#2F6B8A";
+    return `<text x="${LW-10}" y="${y+28}" text-anchor="end" font-size="15" font-weight="700" fill="#3B2419">${esc(r.label.length>9?r.label.slice(0,8)+"…":r.label)}</text>
+      <rect x="${x.toFixed(1)}" y="${y+10}" width="${Math.max(3,w).toFixed(1)}" height="26" rx="5" fill="${col}"/>
+      <text x="${pos?(cx+w+8):(cx-w-8)}" y="${y+29}" text-anchor="${pos?"start":"end"}" font-size="15" font-weight="800" fill="${col}">${pos?"+":"−"}${rpMan(Math.abs(r.d))}</text>`; }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><line x1="${cx}" x2="${cx}" y1="4" y2="${H-4}" stroke="#CDBBAE" stroke-width="2"/>${rowsSvg}</svg>`;
+}
+function rpDonut(rowsB,total){   // 비교월 구성비 도넛
+  const items=rowsB.filter(r=>r.b>0).sort((x,y)=>y.b-x.b);
+  const top=items.slice(0,6), rest=items.slice(6).reduce((s,r)=>s+r.b,0);
+  if(rest>0) top.push({label:"기타",b:rest});
+  if(!top.length||total<=0) return `<div style="font-size:15px;color:var(--faint);padding:30px 0;text-align:center">비교월 데이터가 없습니다.</div>`;
+  const R=90, r0=58, C=110; let ang=-Math.PI/2;
+  const arcs=top.map((it,i)=>{ const f=it.b/total, a2=ang+f*2*Math.PI, large=f>0.5?1:0;
+    const p=(rad,a)=>`${(C+rad*Math.cos(a)).toFixed(2)},${(C+rad*Math.sin(a)).toFixed(2)}`;
+    const d=f>=0.9999?`M${p(R,0)} A${R},${R} 0 1 1 ${p(R,Math.PI)} A${R},${R} 0 1 1 ${p(R,0)} M${p(r0,0)} A${r0},${r0} 0 1 0 ${p(r0,Math.PI)} A${r0},${r0} 0 1 0 ${p(r0,0)}Z`
+      :`M${p(R,ang)} A${R},${R} 0 ${large} 1 ${p(R,a2)} L${p(r0,a2)} A${r0},${r0} 0 ${large} 0 ${p(r0,ang)}Z`;
+    ang=a2; return `<path d="${d}" fill="${RP_PALETTE[i%RP_PALETTE.length]}" fill-rule="evenodd"><title>${esc(it.label)} ${rpWon(it.b)}원</title></path>`; }).join("");
+  const legend=top.map((it,i)=>`<div style="display:flex;align-items:center;gap:8px;font-size:14.5px;padding:4px 0">
+      <span style="width:14px;height:14px;border-radius:4px;background:${RP_PALETTE[i%RP_PALETTE.length]};flex:none"></span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700">${esc(it.label)}</span>
+      <span style="font-weight:800">${(it.b/total*100).toFixed(1)}%</span><span style="color:var(--faint);min-width:64px;text-align:right">${rpMan(it.b)}</span></div>`).join("");
+  return `<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+    <svg viewBox="0 0 220 220" style="width:200px;height:200px;flex:none">${arcs}
+      <text x="110" y="104" text-anchor="middle" font-size="14" fill="#8A7466">${esc(RP.b)}</text>
+      <text x="110" y="128" text-anchor="middle" font-size="21" font-weight="800" fill="#3B2419">${rpMan(total)}</text></svg>
+    <div style="flex:1;min-width:210px">${legend}</div></div>`;
+}
+function rpTrendSvg(months){
+  const pts=months.map(ym=>({ym, v:rpAgg(ym,"dept").total}));
+  if(pts.length<2) return `<div style="font-size:14px;color:var(--faint)">월별 추이는 급여 작업이 2개월 이상 있을 때 표시됩니다.</div>`;
+  const W=1000,H=280,L=80,R=30,T=30,Bm=44, max=Math.max(1,...pts.map(p=>p.v))*1.1, n=pts.length;
+  const x=i=>L+i*(W-L-R)/(n-1), y=v=>T+(1-v/max)*(H-T-Bm);
+  const line=pts.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+  const area=`${line} L${x(n-1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`;
+  const grid=[0,.25,.5,.75,1].map(f=>`<line x1="${L}" x2="${W-R}" y1="${y(max*f)}" y2="${y(max*f)}" stroke="#EFE6DE"/><text x="${L-10}" y="${y(max*f)+5}" text-anchor="end" font-size="13" fill="#8A7466">${rpMan(max*f)}</text>`).join("");
+  const step=Math.max(1,Math.ceil(n/12));
+  const dots=pts.map((p,i)=>{ const hi=p.ym===RP.a||p.ym===RP.b; const col=p.ym===RP.b?"#6B4A3A":(p.ym===RP.a?"#B8A393":"#CDBBAE");
+    return `<circle cx="${x(i)}" cy="${y(p.v)}" r="${hi?8:5}" fill="${col}" stroke="#fff" stroke-width="2"><title>${p.ym} ${rpWon(p.v)}원</title></circle>`
+      +(hi?`<text x="${x(i)}" y="${y(p.v)-14}" text-anchor="middle" font-size="15" font-weight="800" fill="#3B2419">${rpMan(p.v)}</text>`:"")
+      +((i%step===0||hi)?`<text x="${x(i)}" y="${H-14}" text-anchor="middle" font-size="14" fill="${hi?"#3B2419":"#8A7466"}" font-weight="${hi?800:400}">${p.ym.slice(2)}</text>`:""); }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:1200px;display:block"><defs><linearGradient id="rpArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9A7B69" stop-opacity=".28"/><stop offset="1" stop-color="#9A7B69" stop-opacity="0"/></linearGradient></defs>${grid}<path d="${area}" fill="url(#rpArea)"/><path d="${line}" fill="none" stroke="#9A7B69" stroke-width="3"/>${dots}</svg>`;
+}
+function rpExcel(){
+  if(typeof XLSX==="undefined"){ alert("엑셀 모듈을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요."); return; }
+  const {A,B,rows}=rpRows(); const byL=(RP_BY.find(x=>x[0]===RP.by)||[])[1]||"";
+  const aoa=[[`급여 대시보드 (${byL})`],[`기준월 ${RP.a} → 비교월 ${RP.b}`,"","","",""],[],[byL.replace("별",""),RP.a,RP.b,"증감액","증감률"],
+    ...rows.map(r=>[r.label,r.a,r.b,r.d,rpPct(r.a,r.b)]),["합계",A.total,B.total,B.total-A.total,rpPct(A.total,B.total)]];
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:24},{wch:14},{wch:14},{wch:14},{wch:10}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"급여비교");
+  XLSX.writeFile(wb,`급여대시보드_${RP.a}_vs_${RP.b}_${byL}.xlsx`);
+}
+function renderReport(){
+  const root=document.getElementById("reportRoot"); if(!root) return;
+  const cats=[...new Set((PAYROLL_RUNS||[]).map(r=>r.category||"급여"))];
+  const months=rpMonths();
+  if(!months.length){ root.innerHTML=`<div class="rc-sec" style="text-align:center;padding:48px 20px;color:var(--faint);font-size:15px">아직 집계할 급여 작업이 없습니다.<br>보상 › 급여관리에서 급여 작업을 만들면 이곳에 자동으로 집계됩니다.</div>`; return; }
+  if(!months.includes(RP.b)) RP.b=months[months.length-1];
+  if(!months.includes(RP.a)) RP.a=months.length>1?months[months.length-2]:months[0];
+  const {A,B,rows}=rpRows(); const d=B.total-A.total;
+  const byL=(RP_BY.find(x=>x[0]===RP.by)||[])[1];
+  const opt=(sel)=>months.map(m=>`<option value="${m}" ${m===sel?"selected":""}>${m}</option>`).join("");
+  const sign=v=>v>0?"+":(v<0?"−":"");
+  const kpi=(t,v,sub,accent,big)=>`<div style="flex:1;min-width:210px;background:#fff;border:1px solid #E8DDD3;border-top:5px solid ${accent};border-radius:14px;padding:18px 20px">
+      <div style="font-size:14px;color:#8A7466;font-weight:800">${t}</div>
+      <div style="font-size:${big||30}px;font-weight:900;margin-top:6px;color:${accent==="#E8DDD3"?"#3B2419":accent};letter-spacing:-.02em;line-height:1.15">${v}</div>
+      <div style="font-size:14px;color:#6B5A4E;margin-top:6px">${sub}</div></div>`;
+  const perA=A.head?A.total/A.head:0, perB=B.head?B.total/B.head:0;
+  const top=rows.filter(r=>r.d!==0).slice(0,3);
+  const insight=top.length?top.map(r=>`<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #E6D8CC;border-radius:999px;padding:6px 14px;font-size:15px"><b>${esc(r.label)}</b><b style="color:${rpDiffColor(r.d)}">${r.d>0?"▲":"▼"} ${rpMan(Math.abs(r.d))}</b></span>`).join(""):"";
+  const sec=(title,body,extra)=>`<div class="rc-sec" style="padding:20px 22px"><h3 style="font-size:17px;margin-bottom:14px">${title}${extra||""}</h3>${body}</div>`;
+  const tbl=rows.map(r=>`<tr><td style="font-weight:700">${esc(r.label)}</td><td style="text-align:right">${rpWon(r.a)}</td><td style="text-align:right;font-weight:800">${rpWon(r.b)}</td>
+      <td style="text-align:right;font-weight:800;color:${rpDiffColor(r.d)}">${sign(r.d)}${rpWon(Math.abs(r.d))}</td><td style="text-align:right;font-weight:700;color:${rpDiffColor(r.d)}">${rpPct(r.a,r.b)}</td></tr>`).join("");
+  const btn=(on)=>`font-size:14px;padding:9px 14px;${on?"background:#3B2419;color:#fff;border-color:#3B2419":""}`;
+  root.innerHTML=`
+  <div class="rc-sec" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:16px 20px">
+    <div class="fld" style="min-width:140px"><label style="font-size:13px">기준월(이전)</label><select style="font-size:15px;font-weight:700" onchange="rpSet('a',this.value)">${opt(RP.a)}</select></div>
+    <button class="edit-btn" style="height:40px;font-size:16px" onclick="rpSwap()" title="두 달 바꾸기">⇄</button>
+    <div class="fld" style="min-width:140px"><label style="font-size:13px">비교월</label><select style="font-size:15px;font-weight:700" onchange="rpSet('b',this.value)">${opt(RP.b)}</select></div>
+    <div class="fld" style="min-width:130px"><label style="font-size:13px">급여 구분</label><select style="font-size:15px" onchange="rpSet('run',this.value)"><option value="all" ${RP.run==="all"?"selected":""}>전체 합산</option>${cats.map(c=>`<option value="${esc(c)}" ${RP.run===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto">${RP_BY.map(([k,l])=>`<button class="edit-btn" style="${btn(RP.by===k)}" onclick="rpSet('by','${k}')">${l}</button>`).join("")}
+      <button class="edit-btn" style="${btn(false)}" onclick="rpExcel()">⬇ 엑셀</button></div>
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin:14px 0">
+    ${kpi(`${RP.a} 인건비`, rpMan(A.total)+"원", `${rpWon(A.total)}원 · ${A.head}명`, "#E8DDD3")}
+    ${kpi(`${RP.b} 인건비`, rpMan(B.total)+"원", `${rpWon(B.total)}원 · ${B.head}명`, "#6B4A3A")}
+    ${kpi("증감액", (d>0?"▲ ":(d<0?"▼ ":""))+rpMan(Math.abs(d))+"원", `${sign(d)}${rpWon(Math.abs(d))}원`, d>0?"#C0504D":(d<0?"#2F6B8A":"#8A7466"))}
+    ${kpi("증감률", rpPct(A.total,B.total), `1인당 ${rpMan(perA)} → ${rpMan(perB)}원`, d>0?"#C0504D":(d<0?"#2F6B8A":"#8A7466"))}
+  </div>
+  ${insight?`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:#F8F2ED;border:1px solid #E6D8CC;border-radius:14px;padding:12px 16px;margin-bottom:14px"><span style="font-size:15px;font-weight:800;margin-right:4px">📌 가장 많이 변한 곳</span>${insight}</div>`:""}
+  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch">
+    <div style="flex:1.2;min-width:340px">${sec(`증감 요인 <span style="font-size:13px;color:var(--faint);font-weight:400">— ${byL}, 늘어난 곳 <b style="color:#C0504D">빨강</b> · 줄어든 곳 <b style="color:#2F6B8A">파랑</b></span>`, rpDivergeSvg(rows))}</div>
+    <div style="flex:1;min-width:320px">${sec(`${esc(RP.b)} 구성비 <span style="font-size:13px;color:var(--faint);font-weight:400">— ${byL}</span>`, rpDonut(rows,B.total))}</div>
+  </div>
+  ${sec(`${byL} 두 달 비교`, `<div style="overflow-x:auto">${rows.length?rpBarSvg(rows):`<div style="color:var(--faint);font-size:14px">두 달 모두 해당 데이터가 없습니다.</div>`}</div>`, rows.length>15?` <span style="font-size:13px;color:var(--faint);font-weight:400">— 증감 상위 15개만 표시(전체는 아래 표)</span>`:"")}
+  ${sec("월별 인건비 추이", `<div style="overflow-x:auto">${rpTrendSvg(months)}</div>`)}
+  ${sec("상세 표", `<div class="rtable" style="overflow-x:auto"><table style="font-size:14.5px">
+    <thead><tr><th>${byL.replace("별","")}</th><th style="text-align:right">${RP.a}</th><th style="text-align:right">${RP.b}</th><th style="text-align:right">증감액</th><th style="text-align:right">증감률</th></tr></thead>
+    <tbody>${tbl}<tr style="background:#F3EAE3;font-weight:900"><td>합계</td><td style="text-align:right">${rpWon(A.total)}</td><td style="text-align:right">${rpWon(B.total)}</td><td style="text-align:right;color:${rpDiffColor(d)}">${sign(d)}${rpWon(Math.abs(d))}</td><td style="text-align:right;color:${rpDiffColor(d)}">${rpPct(A.total,B.total)}</td></tr></tbody></table></div>`)}
+  <div style="font-size:12.5px;color:var(--faint);margin-top:6px">※ 지급액은 급여작업의 지급항목 합계(세전·공제 전)이며, 같은 귀속월의 여러 작업(급여·상여 등)은 합산됩니다. 사업장별은 현재 인사기록카드의 사업장 기준입니다.</div>`;
 }
 
 /* ═══════════════════════ 개발 > 법정의무교육 (증분1: 과정 설정) ═══════════════════════
@@ -3458,6 +3632,10 @@ function renderHome(){
     { axis:"retain", ico:"🤝", title:"유지", stat:`재직 임직원 ${activeEmpCount}명`,
       desc:"임직원 인사기록카드와 노무 이슈를 관리합니다.",
       links: link("employees","👥","임직원 · 인사기록카드"), mod:"employees" },
+    { axis:"report", ico:"📈", title:"보고",
+      stat: canViewHrSensitive() ? `집계 가능 ${[...new Set((PAYROLL_RUNS||[]).map(r=>r.yearMonth).filter(Boolean))].length}개월` : "",
+      desc:"월별 인건비를 부서·사업장·사원·급여항목별로 비교하는 대시보드입니다.",
+      links: (hasPerm("reward")?`<button class="hc-link" onclick="event.stopPropagation();goModule('report');rpShow('payroll');">📊 급여 대시보드</button>`:""), mod:"report" },
   ];
 
   const html=cards.map(c=>{
