@@ -4444,15 +4444,16 @@ function computePayrollRow(e, ym, opts){
   // 건강보험·고용보험·소득세: 그 달 실제(일할계산 포함) 지급액 기준. 비과세 항목은 한도까지만 제외하고 초과분은 과세대상 포함.
   const dedBase=PAY_COLUMNS.reduce((s,k)=>s+(PAY_TAXFREE.has(k)?taxfreeExcessPortion(k,pay[k].v):pay[k].v),0);
   const dep=parseInt(c.dedFamilyCount)||1;
+  const kids=childCountOf(c);
   let hi,ei,ltc,it,lt;
   if(otherBase>0){
     // 같은 달 다른 급여작업에 이미 반영된 몫을 빼고 '증분'만 이 작업에서 공제(이중공제 방지)
-    const otherSt=calcStatutoryDeductions(otherBase,dep);
-    const combinedSt=calcStatutoryDeductions(otherBase+dedBase,dep);
+    const otherSt=calcStatutoryDeductions(otherBase,dep,kids);
+    const combinedSt=calcStatutoryDeductions(otherBase+dedBase,dep,kids);
     hi=combinedSt.hi-otherSt.hi; ei=combinedSt.ei-otherSt.ei; ltc=combinedSt.ltc-otherSt.ltc;
     it=combinedSt.it-otherSt.it; lt=combinedSt.lt-otherSt.lt;
   } else {
-    const st=dedBase>0?calcStatutoryDeductions(dedBase,dep):{hi:0,ei:0,ltc:0,it:0,lt:0};
+    const st=dedBase>0?calcStatutoryDeductions(dedBase,dep,kids):{hi:0,ei:0,ltc:0,it:0,lt:0};
     hi=st.hi; ei=st.ei; ltc=st.ltc; it=st.it; lt=st.lt;
   }
   // 국민연금: 매달 고지금액이 동일해야 하므로 일할계산 전 '정상' 보수월액 기준으로 별도 계산.
@@ -5279,7 +5280,8 @@ function computeBaseDeductions(row, empId){
   const fixedBase=PAY_COLUMNS.reduce((s,k)=>s+(PAY_TAXFREE.has(k)?taxfreeExcessPortion(k,row.pay[k].v):row.pay[k].v),0);
   const e=findEmp(empId);
   const dep=e ? (parseInt(migrateContract(e).dedFamilyCount)||1) : 1;
-  const st=fixedBase>0 ? calcStatutoryDeductions(fixedBase,dep) : {hi:0,ei:0,ltc:0,it:0,lt:0};
+  const kids=e ? childCountOf(migrateContract(e)) : 0;
+  const st=fixedBase>0 ? calcStatutoryDeductions(fixedBase,dep,kids) : {hi:0,ei:0,ltc:0,it:0,lt:0};
   return {hi:st.hi, ei:st.ei, ltc:st.ltc, it:st.it, lt:st.lt};
 }
 function recalcNonNpDeductions(row, empId){
@@ -5292,16 +5294,17 @@ function recalcNonNpDeductions(row, empId){
   const dedBase=fixedBase+extraBase;
   const e=findEmp(empId);
   const dep=e ? (parseInt(migrateContract(e).dedFamilyCount)||1) : 1;
+  const kids=e ? childCountOf(migrateContract(e)) : 0;
   // 이 급여작업이 같은 달의 다른 작업과 함께 있는 경우, 그 작업들에 이미 반영된 몫을 빼고 증분만 반영(이중공제 방지)
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId);
   const otherBase=run ? otherRunsDedBaseForEmp(empId, run.yearMonth, run.id) : 0;
   let st;
   if(otherBase>0){
-    const otherSt=calcStatutoryDeductions(otherBase,dep);
-    const combinedSt=calcStatutoryDeductions(otherBase+dedBase,dep);
+    const otherSt=calcStatutoryDeductions(otherBase,dep,kids);
+    const combinedSt=calcStatutoryDeductions(otherBase+dedBase,dep,kids);
     st={ hi:combinedSt.hi-otherSt.hi, ei:combinedSt.ei-otherSt.ei, ltc:combinedSt.ltc-otherSt.ltc, it:combinedSt.it-otherSt.it, lt:combinedSt.lt-otherSt.lt };
   } else {
-    st=dedBase>0 ? calcStatutoryDeductions(dedBase,dep) : {hi:0,ei:0,ltc:0,it:0,lt:0};
+    st=dedBase>0 ? calcStatutoryDeductions(dedBase,dep,kids) : {hi:0,ei:0,ltc:0,it:0,lt:0};
   }
   row.deduct["건강보험"]={v:st.hi, manual:false};
   row.deduct["고용보험"]={v:st.ei, manual:false};
@@ -5698,12 +5701,12 @@ function setDedShadow(state, msg){
   const color = state==="ok" ? "#2E7D32" : state==="bad" ? "#B00020" : "#8a7a66";
   el.style.color=color; el.textContent="🛡 "+msg;
 }
-async function shadowVerifyStatutory(base, dep, local){
+async function shadowVerifyStatutory(base, dep, local, kids){
   if(!local) return;
   try{
     setDedShadow("info","서버 계산 대조 중…");
     const res=await fetch(`${SUPABASE_URL}/functions/v1/calc-statutory`, {
-      method:"POST", headers: await sbHeaders(), body: JSON.stringify({ base, dependents:dep })
+      method:"POST", headers: await sbHeaders(), body: JSON.stringify({ base, dependents:dep, children:(parseInt(kids)||0) })
     });
     if(!res.ok){ setDedShadow("info","서버 미배포/오류 "+res.status+" · 로컬 계산 사용 중"); return; }
     const s=await res.json();
@@ -6522,14 +6525,14 @@ function netMarkTaxfree(items){ return (items||[]).map(w=>STATUTORY_TAXFREE_LIMI
 function netTaxableBase(items){
   return (items||[]).reduce((s,w)=>{ const amt=parseInt(digits(w.amount))||0; if(!w.taxfree) return s+amt; return s+taxfreeExcessPortion(netLabel(w),amt); },0);
 }
-function netOf(items,dep){
+function netOf(items,dep,kids){
   const gross=netItemsSum(items); const base=netTaxableBase(items);
-  const d=calcStatutoryDeductions(base,dep); return {gross,base,net:gross-d.total};
+  const d=calcStatutoryDeductions(base,dep,kids); return {gross,base,net:gross-d.total};
 }
 /* 세후≥목표가 되는 최소 과세 보수월액(이분탐색) */
-function netInverseBase(target,nonTax,dep){
+function netInverseBase(target,nonTax,dep,kids){
   let lo=0, hi=Math.max(target*3,1000000);
-  while(lo<hi){ const m=Math.floor((lo+hi)/2); if(m+nonTax-calcStatutoryDeductions(m,dep).total>=target) hi=m; else lo=m+1; }
+  while(lo<hi){ const m=Math.floor((lo+hi)/2); if(m+nonTax-calcStatutoryDeductions(m,dep,kids).total>=target) hi=m; else lo=m+1; }
   return lo;
 }
 function netClauseText(c){
@@ -6540,7 +6543,7 @@ function netToggle(v){ const e=findEmp(openEmpId); if(!e) return; const c=migrat
 function renderNetPanel(c,on){
   const chk=!!c.netPay, r=c.netResult;
   const curDep=parseInt(c.dedFamilyCount)||1;
-  const stale=r && (netItemsSum(c.wageItems)!==r.gross || curDep!==r.dep);
+  const stale=r && (netItemsSum(c.wageItems)!==r.gross || curDep!==r.dep || childCountOf(c)!==(r.kids||0));
   const tfNames=Object.keys(STATUTORY_TAXFREE_LIMITS).join("·");
   return `<div class="rc-sec" style="background:#F8F2ED;border-color:#DFCEC2;margin:0 0 14px">
     <label style="display:flex;align-items:center;gap:8px;font-weight:800;font-size:13px">
@@ -6550,14 +6553,14 @@ function renderNetPanel(c,on){
     <div style="font-size:11px;color:var(--faint);line-height:1.6;margin:8px 0 10px">
       ① 비과세 항목(육아수당·자가운전보조금 등)은 아래 급여 항목표에 <b>먼저 추가</b>하세요. 식대는 자동계산기의 '식대(비과세)' 칸에 입력합니다.<br>
       ② 비과세 인식 항목명: ${esc(tfNames)} — 법정 한도까지만 비과세, 초과분은 과세됩니다.<br>
-      ③ 부양가족수는 아래 🔒 공제내역 계산기 값(현재 <b>${curDep}인</b>)을 사용합니다.
+      ③ 부양가족수·8~20세 자녀수는 아래 🔒 공제내역 계산기 값(현재 <b>${curDep}인 · 자녀 ${childCountOf(c)}명</b>)을 사용합니다.
     </div>
     <div class="fg">
       <div class="fld"><label>세후 월 약정액(원)</label><input ${D(on)} value="${withComma(c.netTarget)}" oninput="onMoneyInput(this,v=>empCon('netTarget',v))" placeholder="예) 10,000,000" inputmode="numeric" style="text-align:right"></div>
     </div>
     ${on?`<button class="btn" style="margin-top:8px" onclick="applyNetCalc()">💰 세후 → 세전 역산 + 임금 분할</button>`:""}
     ${r?`<div style="margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.7;background:${stale?"#FBEAEA":"#EAF3EC"};color:${stale?"#B23B3B":"#2F6B4A"};border:1px solid ${stale?"#F0B8B8":"#BFDFC9"}">
-      ${stale?`⚠ 역산 이후 급여 항목 또는 부양가족수가 바뀌었습니다. <b>다시 역산</b>하세요.<br>`:""}
+      ${stale?`⚠ 역산 이후 급여 항목 또는 부양가족·자녀수가 바뀌었습니다. <b>다시 역산</b>하세요.<br>`:""}
       세후 약정 <b>${r.target.toLocaleString("ko-KR")}원</b> (부양가족 ${r.dep}인) → 세전 월 <b>${r.gross.toLocaleString("ko-KR")}원</b> · 연 ${(r.gross*12).toLocaleString("ko-KR")}원<br>
       역산 결과 세후 ${r.net.toLocaleString("ko-KR")}원 ${r.net===r.target?"✓ 약정액 일치":`✓ 약정액 충족(+${(r.net-r.target).toLocaleString("ko-KR")}원, 원 단위 끝전)`}
     </div>`:""}
@@ -6572,13 +6575,14 @@ async function applyNetCalc(){
   const target=parseInt(digits(c.netTarget))||0;
   if(!target){ alert("세후 월 약정액을 입력해주세요."); return; }
   const dep=parseInt(c.dedFamilyCount)||1;
-  if(!confirm(`세후 월 ${target.toLocaleString("ko-KR")}원 · 부양가족 ${dep}인(본인 포함) 기준으로 세전을 역산하고,\n임금항목 자동계산기로 급여 항목을 다시 분할합니다.\n(기존 자동계산 항목은 새 결과로 바뀝니다. 부양가족수가 다르면 취소 후 공제내역 계산기에서 먼저 수정하세요)\n\n계속할까요?`)) return;
+  const kids=childCountOf(c);
+  if(!confirm(`세후 월 ${target.toLocaleString("ko-KR")}원 · 부양가족 ${dep}인(본인 포함)${kids?` · 8~20세 자녀 ${kids}명`:""} 기준으로 세전을 역산하고,\n임금항목 자동계산기로 급여 항목을 다시 분할합니다.\n(기존 자동계산 항목은 새 결과로 바뀝니다. 부양가족수가 다르면 취소 후 공제내역 계산기에서 먼저 수정하세요)\n\n계속할까요?`)) return;
   // 자동계산 대상이 아닌 사전 고정항목(육아수당 등) + 식대의 비과세 합계로 1차 역산
   const pre=mergeCalcTaxfree(c).filter(w=>!AUTO_WAGE_LABELS.includes(val(w.label)));
   const meal=parseInt(digits(c.calcMeal))||0;
   const nonTax=pre.reduce((s,w)=>{ if(!w.taxfree) return s; const a=parseInt(digits(w.amount))||0; return s+(a-taxfreeExcessPortion(netLabel(w),a)); },0)
              + (meal-taxfreeExcessPortion("식대",meal));
-  let G=netInverseBase(target,nonTax,dep)+nonTax;
+  let G=netInverseBase(target,nonTax,dep,kids)+nonTax;
   let done=null;
   for(let k=0;k<12;k++){
     const inp={ wageAnnual:String(G*12), calcStdHours:c.calcStdHours, calcOtHours:c.calcOtHours, calcNightHours:c.calcNightHours, calcHolidayHours:c.calcHolidayHours, calcLeaveHours:c.calcLeaveHours, calcMeal:c.calcMeal, wageItems:pre };
@@ -6586,7 +6590,7 @@ async function applyNetCalc(){
     if(!r){ alert("서버에서 급여 계산을 완료하지 못했습니다.\n인터넷 연결을 확인하고 잠시 후 다시 시도해 주세요."); return; }
     if(r.error){ alert(r.error); return; }
     const items=netMarkTaxfree(r.wageItems||[]);
-    const m=netOf(items,dep);
+    const m=netOf(items,dep,kids);
     if(m.net>=target){ done={r,items,m}; break; }
     G+=Math.max(1,target-m.net);   // 자동계산 끝전(반올림)으로 부족하면 부족분만큼 올려 재계산
   }
@@ -6594,7 +6598,7 @@ async function applyNetCalc(){
   c.wageAnnual=String(G*12);
   c.wageItems=done.items; c.wageMonthly=done.r.wageMonthly; c.calcHourlyWage=done.r.calcHourlyWage;
   c.dedBaseWage=""; c.dedFamilyCount=String(dep);
-  c.netResult={target, gross:done.m.gross, net:done.m.net, dep, at:new Date().toISOString()};
+  c.netResult={target, gross:done.m.gross, net:done.m.net, dep, kids, at:new Date().toISOString()};
   save();
   computeDeductions();   // 기존 공제내역 계산기로 결과 검증·표시(렌더 포함)
   adminToast(`네트 역산 완료: 세전 월 ${done.m.gross.toLocaleString("ko-KR")}원 ✓`);
@@ -6753,6 +6757,7 @@ function renderContract(e){
     <div class="fg c4">
       <div class="fld"><label>보수월액(비과세 제외, 원)</label><input ${D(on)} value="${withComma(c.dedBaseWage)}" oninput="onMoneyInput(this,v=>empCon('dedBaseWage',v))" placeholder="비우면 급여 항목표에서 자동 합산" inputmode="numeric" style="text-align:right"></div>
       <div class="fld"><label>부양가족수(본인포함)</label><input ${D(on)} value="${val(c.dedFamilyCount)||"1"}" onchange="empCon('dedFamilyCount',this.value)" placeholder="1" inputmode="numeric"></div>
+      <div class="fld"><label>8~20세 자녀수 <span style="font-weight:400;color:var(--faint)">(부양가족수에 포함된 인원)</span></label><input ${D(on)} value="${val(c.dedChildCount)||"0"}" onchange="empCon('dedChildCount',this.value)" placeholder="0" inputmode="numeric"></div>
     </div>
     ${on?`<button class="btn" style="margin-top:6px" onclick="computeDeductions()">🔒 공제내역 계산</button>`:""}
     ${c.dedResult?`
@@ -6762,7 +6767,7 @@ function renderContract(e){
         <tr><td>건강보험 (3.595%)</td><td style="text-align:right">${c.dedResult.hi.toLocaleString("ko-KR")}</td></tr>
         <tr><td>장기요양보험 (건강보험료의 13.14%)</td><td style="text-align:right">${c.dedResult.ltc.toLocaleString("ko-KR")}</td></tr>
         <tr><td>고용보험 (0.9%)</td><td style="text-align:right">${c.dedResult.ei.toLocaleString("ko-KR")}</td></tr>
-        <tr><td>근로소득세 (간이세액표, 부양가족 ${val(c.dedFamilyCount)||"1"}인)</td><td style="text-align:right">${c.dedResult.it.toLocaleString("ko-KR")}</td></tr>
+        <tr><td>근로소득세 (간이세액표, 부양가족 ${val(c.dedFamilyCount)||"1"}인${childCountOf(c)?`, 8~20세 자녀 ${childCountOf(c)}명 공제 −${childTaxCredit(childCountOf(c)).toLocaleString("ko-KR")}원`:""})</td><td style="text-align:right">${c.dedResult.it.toLocaleString("ko-KR")}</td></tr>
         <tr><td>지방소득세 (소득세의 10%)</td><td style="text-align:right">${c.dedResult.lt.toLocaleString("ko-KR")}</td></tr>
         <tr style="background:#F3EAE3;font-weight:800"><td>공제합계</td><td style="text-align:right">${c.dedResult.total.toLocaleString("ko-KR")}</td></tr>
         <tr><td>지급총액(비과세 포함)</td><td style="text-align:right">${c.dedResult.gross.toLocaleString("ko-KR")}</td></tr>
@@ -6872,13 +6877,21 @@ function lookupIncomeTax(monthlyTaxableWon, dependents){
   return base+31034600+dn10((x-87000000)*0.45);
 }
 /* 4대보험+소득세 공용 계산 (근로계약 탭·급여관리 모듈에서 공유) */
-function calcStatutoryDeductions(base, dependents){
+/* 8세 이상 20세 이하 자녀 공제(소득세법 시행령 별표2, 2026.2.27 개정 · 2026.3.1 지급분부터)
+   1명 20,830원 / 2명 45,830원 / 3명 이상 45,830원 + 2명 초과 1명당 33,330원. 공제 후 음수면 0원 */
+function childTaxCredit(kids){
+  const n=Math.max(0,parseInt(kids)||0);
+  if(n<=0) return 0; if(n===1) return 20830; if(n===2) return 45830;
+  return 45830+(n-2)*33330;
+}
+function childCountOf(c){ return Math.max(0, parseInt(c&&c.dedChildCount)||0); }
+function calcStatutoryDeductions(base, dependents, kids){
   const dep=parseInt(dependents)||1;
   const np=Math.floor(Math.min(base,6590000)*0.0475/10)*10;         // 국민연금(상한 6,590,000원, 2026.7~2027.6 기준소득월액 상한)
   const hi=Math.floor(base*0.03595/10)*10;                          // 건강보험
   const ltc=Math.floor(hi*0.1314/10)*10;                            // 장기요양보험(건강보험료의 13.14%)
   const ei=Math.floor(base*0.009/10)*10;                            // 고용보험
-  const it=lookupIncomeTax(base,dep);                               // 소득세(간이세액표)
+  const it=Math.max(0, lookupIncomeTax(base,dep)-childTaxCredit(kids)); // 소득세(간이세액표 − 8~20세 자녀공제)
   const lt=Math.floor(it*0.1/10)*10;                                // 지방소득세(소득세의 10%)
   return {np,hi,ltc,ei,it,lt,total:np+hi+ltc+ei+it+lt};
 }
@@ -6895,15 +6908,16 @@ function computeDeductions(){
   const overrideBase=parseInt(digits(c.dedBaseWage))||0;
   const base=overrideBase||autoBase;
   const dep=parseInt(c.dedFamilyCount)||1;
+  const kids=childCountOf(c);
   if(!base){ alert("보수월액(비과세 제외)이 0입니다. 급여 항목을 먼저 계산하거나 직접 입력해주세요."); return; }
-  const r=calcStatutoryDeductions(base,dep);
+  const r=calcStatutoryDeductions(base,dep,kids);
   const grossAll=(c.wageItems||[]).reduce((s,w)=>s+(parseInt(digits(w.amount))||0),0); // 비과세 포함 총 지급액
   const net=grossAll-r.total;
   c.dedFamilyCount=String(dep);
   c.dedBaseWage=String(base);
   c.dedResult={...r,gross:grossAll,net,at:new Date().toISOString()};
   save(); renderEmpDetail();
-  setTimeout(()=>shadowVerifyStatutory(base, dep, r), 0);   // 4대보험·소득세 서버 섀도우 대조(비차단, 표시만)
+  setTimeout(()=>shadowVerifyStatutory(base, dep, r, kids), 0);   // 4대보험·소득세 서버 섀도우 대조(비차단, 표시만)
 }
 /* 동적 급여항목 핸들러 */
 function wageItem(i,k,v){ const e=findEmp(openEmpId); if(e&&e.contract&&e.contract.wageItems[i]){ e.contract.wageItems[i][k]=v; } }
@@ -6939,7 +6953,7 @@ function openContractDoc(){
   if(c.netPay){
     const r=c.netResult;
     if(!r){ alert("네트제 계약입니다. 먼저 [세후 → 세전 역산 + 임금 분할]을 실행해주세요.\n(근로계약서에 세후 실수령액을 표기하려면 역산 결과가 필요합니다)"); return; }
-    if(netItemsSum(c.wageItems)!==r.gross || (parseInt(c.dedFamilyCount)||1)!==r.dep){
+    if(netItemsSum(c.wageItems)!==r.gross || (parseInt(c.dedFamilyCount)||1)!==r.dep || childCountOf(c)!==(r.kids||0)){
       if(!confirm("역산 이후 급여 항목 또는 부양가족수가 바뀌어 세전 금액과 세후 실수령액이 맞지 않을 수 있습니다.\n다시 역산한 뒤 생성하는 것을 권장합니다. 그래도 계약서를 생성할까요?")) return;
     }
   }
