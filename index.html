@@ -1569,6 +1569,31 @@ async function sealRrns(){
     return false;
   }
 }
+/* 여러 직원의 주민번호를 한 번에 풀어 Map(empId→번호)으로 반환. 권한 없거나 실패 시 마스킹 값 */
+async function rrnPlainMap(emps){
+  const m=new Map(); const list=(emps||[]).filter(Boolean);
+  const enc=list.filter(e=>isRrnEnc(e.residentNo));
+  list.filter(e=>e.residentNo && !isRrnEnc(e.residentNo)).forEach(e=>m.set(e.id, canViewHrSensitive()?String(e.residentNo):rrnMask(e.residentNo)));
+  if(!enc.length) return m;
+  if(!canViewHrSensitive()){ enc.forEach(e=>m.set(e.id, rrnShown(e))); return m; }
+  try{
+    const d=await rrnCall({action:"decrypt", companyId:CURRENT_COMPANY_ID, values:enc.map(e=>e.residentNo)});
+    enc.forEach((e,i)=>m.set(e.id, (d.values||[])[i]||rrnShown(e)));
+  }catch(err){
+    alert("주민등록번호 원문을 불러오지 못해 가린 번호로 표시합니다.\n("+(err&&err.message||err)+")");
+    enc.forEach(e=>m.set(e.id, rrnShown(e)));
+  }
+  return m;
+}
+/* ③ 현재 회사의 평문 주민번호 현황·즉시 암호화 */
+function rrnPlainCount(){ return (EMPLOYEES||[]).filter(e=>e&&e.residentNo&&!isRrnEnc(e.residentNo)).length; }
+async function rrnSealNow(){
+  const n=rrnPlainCount(); if(!n){ adminToast("모든 주민번호가 이미 암호화되어 있습니다 ✓"); return; }
+  const ok=await sealRrns();
+  if(ok && !rrnPlainCount()){ save(); adminToast(`주민번호 ${n}건 암호화 완료 ✓`); }
+  else alert("일부 주민번호를 암호화하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  renderEmployees();
+}
 async function rrnReveal(){
   const e=findEmp(openEmpId); if(!e || !isRrnEnc(e.residentNo)) return;
   if(!canViewHrSensitive()){ alert("주민등록번호 원문 열람 권한이 없습니다."); return; }
@@ -4458,6 +4483,8 @@ function renderEmployees(){
   if(ca) ca.textContent=activeAll.length; if(cl) cl.textContent=leaveAll.length;
 
   let html="";
+  const _plain=rrnPlainCount();
+  if(_plain && canViewHrSensitive()) html+=`<div class="law-note" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-color:#F0B8B8;background:#FBEAEA;color:#8B3A2F">🔓 <b>암호화되지 않은 주민번호 ${_plain}건</b>이 있습니다. <button class="edit-btn" onclick="rrnSealNow()">🔒 지금 암호화</button></div>`;
   html += buildEmpFilterBar();
   // 전환 대기 배너 (재직 탭에서만)
   if(empView==="active" && conv.length){
@@ -5049,12 +5076,12 @@ function buildExcelHeader(){
   header2[38]="공제액계";
   return [header1, header2];
 }
-function buildExcelRows(run, blank){
+function buildExcelRows(run, blank, rrnMap){
   const rows=buildExcelHeader();
   run.rows.forEach(row=>{
     const e=findEmp(row.empId);
     const line=new Array(40).fill(0);
-    line[0]=row.empId; line[1]=row.name; line[2]=(e&&e.rrn)||""; line[3]=row.dept||""; line[4]=row.position||""; line[5]=(e&&e.jobType)||"";
+    line[0]=row.empId; line[1]=row.name; line[2]=(e&&rrnMap&&rrnMap.get(e.id))||""; line[3]=row.dept||""; line[4]=row.position||""; line[5]=(e&&e.jobType)||"";
     if(!blank){
       PAY_COLUMNS.forEach((k,i)=>line[6+i]=row.pay[k].v);
       line[23]=rowPayTotal(row);
@@ -5074,15 +5101,17 @@ function writeExcelFile(rows, filename){
   XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
   XLSX.writeFile(wb, filename);
 }
-function downloadExcelBlank(){
+async function downloadExcelBlank(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
-  writeExcelFile(buildExcelRows(run, true), `급여빈양식_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
+  const _rm=await rrnPlainMap(run.rows.map(r=>findEmp(r.empId)));
+  writeExcelFile(buildExcelRows(run, true, _rm), `급여빈양식_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
 }
-function downloadExcelTemplate(){
+async function downloadExcelTemplate(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
-  writeExcelFile(buildExcelRows(run, false), `급여작업데이터_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
+  const _rm=await rrnPlainMap(run.rows.map(r=>findEmp(r.empId)));
+  writeExcelFile(buildExcelRows(run, false, _rm), `급여작업데이터_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
 }
 
 let excelUploadMatchBy="code"; // 'code'(사번) | 'rrn'(주민번호)
@@ -5120,14 +5149,14 @@ function handleExcelFile(file){
     catch(err){ alert("엑셀 파일을 읽을 수 없습니다: "+err.message); return; }
     const ws=wb.Sheets[wb.SheetNames[0]];
     const aoa=XLSX.utils.sheet_to_json(ws, {header:1, defval:0});
-    validateAndPreviewExcel(aoa, run);
+    (excelUploadMatchBy==="rrn" ? rrnPlainMap(EMPLOYEES) : Promise.resolve(null)).then(m=>validateAndPreviewExcel(aoa, run, m));
   };
   reader.onerror=()=>alert("파일을 읽는 중 오류가 발생했습니다.");
   reader.readAsArrayBuffer(file);
   document.getElementById("excelUploadInput").value=""; // 같은 파일 재업로드 가능하도록
 }
 /* 검증시스템: 헤더 형식·매칭 여부·항목별 합계 정합성을 전부 확인하고 결과를 보여준 뒤에만 반영 가능 */
-function validateAndPreviewExcel(aoa, run){
+function validateAndPreviewExcel(aoa, run, rrnMap){
   const errors=[];
   const header1=aoa[0]||[], header2=aoa[1]||[];
   if(val(header1[0])!=="사원코드") errors.push(`1행 A열 헤더가 "사원코드"이어야 하는데 "${esc(val(header1[0]))}"로 되어있습니다.`);
@@ -5147,7 +5176,7 @@ function validateAndPreviewExcel(aoa, run){
     const key=excelUploadMatchBy==="code" ? code : rrn;
     let emp=null;
     if(excelUploadMatchBy==="code") emp=EMPLOYEES.find(e=>String(e.id)===String(code));
-    else emp=digits(rrn) ? EMPLOYEES.find(e=>digits(e.rrn)===digits(rrn)) : null;
+    else emp=digits(rrn) ? EMPLOYEES.find(e=>rrnMap && digits(rrnMap.get(e.id)||"")===digits(rrn)) : null;
     const row=emp ? run.rows.find(rr=>rr.empId===emp.id) : null;
     if(!emp || !row){ unmatched.push({rowIdx:idx+3, key, name}); return; }
     const payVals={}; PAY_COLUMNS.forEach((k,i)=>payVals[k]=parseInt(digits(r[6+i]))||0);
@@ -6157,8 +6186,11 @@ function yeNav(dir){
   curYETarget.idx=Math.max(0,Math.min(curYETarget.empIds.length-1,curYETarget.idx+dir));
   renderYearEndCalc(curYETarget.empIds[curYETarget.idx], curYETarget.year);
 }
-function printYearEndSlip(empId, year, isLeaver){
+async function printYearEndSlip(empId, year, isLeaver){
+  const _w=window.open("","_blank");
+  if(_w) _w.document.write('<p style="font-family:sans-serif;padding:20px">불러오는 중…</p>');
   const e=findEmp(empId); const r=calcYearEndSettlement(e, year, isLeaver);
+  const _rrn=(await rrnPlainMap([e])).get(e.id)||"";
   const ci=companyInfoFull();
   const zero=(v)=>v?v.toLocaleString("ko-KR"):"0";
   const fam=(e.family||[]).filter(f=>f.incomeOk!==false && (val(f.relation)||val(f.name)));
@@ -6175,8 +6207,9 @@ function printYearEndSlip(empId, year, isLeaver){
     <td class="ctr">국세청</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
   </tr>`).join("");
 
-  const w=window.open("","_blank");
+  const w=_w;
   if(!w){ alert("팝업이 차단되었습니다. 팝업을 허용해 주세요."); return; }
+  w.document.open();
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>근로소득원천징수영수증_${esc(e.name)}_${esc(year)}</title>
   <style>
     body{font-family:'Malgun Gothic',dotum,sans-serif;margin:0;color:#111;font-size:10.5px}
@@ -6225,7 +6258,7 @@ function printYearEndSlip(empId, year, isLeaver){
     </table>
 
     <table style="margin-bottom:4px">
-      <tr><td class="side" rowspan="2">소득자</td><td class="lbl" style="width:130px">⑥ 성 명</td><td>${esc(e.name)}</td><td class="lbl" style="width:180px">⑦ 주민등록번호(외국인등록번호)</td><td>${esc(e.rrn||"—")}</td></tr>
+      <tr><td class="side" rowspan="2">소득자</td><td class="lbl" style="width:130px">⑥ 성 명</td><td>${esc(e.name)}</td><td class="lbl" style="width:180px">⑦ 주민등록번호(외국인등록번호)</td><td>${esc(_rrn||"—")}</td></tr>
       <tr><td class="lbl">⑧ 주 소</td><td colspan="3">${esc(e.addr||"—")}</td></tr>
     </table>
 
