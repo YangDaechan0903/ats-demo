@@ -1500,7 +1500,9 @@ async function signIn(email, password){
   });
   return { ok:true };
 }
-function signOut(){
+async function signOut(){
+  // 로그아웃 접속 기록(최대 1.5초 대기 — 실패해도 로그아웃은 진행)
+  try{ await Promise.race([logAccess("logout"), new Promise(r=>setTimeout(r,1500))]); }catch(e){}
   saveSession(null);
   try{ localStorage.removeItem(STORE); }catch(e){}   // 로컬 캐시도 비워 남의 기기에 데이터가 남지 않게
   try{ localStorage.removeItem(COMPANY_SEL_STORE); }catch(e){}
@@ -1548,6 +1550,19 @@ async function rrnCall(body){
   const d=await r.json().catch(()=>({}));
   if(!r.ok || d.error) throw new Error(d.error||("HTTP "+r.status));
   return d;
+}
+/* ── 접속 기록 (개인정보의 안전성 확보조치 기준 제8조) ──
+   · 서버(log-access Edge Function)가 IP·브라우저를 포함해 access_logs에 기록. 브라우저는 직접 쓰지 못함.
+   · 기록 실패가 업무를 막지 않도록 오류는 콘솔 경고만 남김. */
+const LOG_FN=`${SUPABASE_URL}/functions/v1/log-access`;
+async function logAccess(action, target, detail, result){
+  try{
+    if(!session || !session.access_token) return;
+    const tok=await ensureToken();
+    const r=await fetch(LOG_FN,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":SUPABASE_KEY},
+      body:JSON.stringify({action, companyId:CURRENT_COMPANY_ID||"", target:target||null, detail:detail||null, result:result||"success"})});
+    if(!r.ok){ const d=await r.json().catch(()=>({})); console.warn("접속 기록 실패", r.status, d.error||""); }
+  }catch(e){ console.warn("접속 기록 오류", e); }
 }
 let rrnSealWarned=false;
 async function sealRrns(){
@@ -1800,6 +1815,7 @@ async function switchCompany(companyId){
   if(!m || String(companyId)===String(CURRENT_COMPANY_ID)) { renderCompanySwitcher(); return; }
   CURRENT_MEMBERSHIP=m; CURRENT_COMPANY_ID=m.company_id; CURRENT_COMPANY=m._company;
   try{ localStorage.setItem(COMPANY_SEL_STORE, companyId); }catch(e){}
+  logAccess("company_switch", m._name||"");   // 전환한 회사 기준으로 기록
   curUser = { name:m.name||"", status:m.status, perms:(m.permissions||{}) };
   await load();
   applyPerms();
@@ -1999,6 +2015,7 @@ async function doLogin(){
     }
   }
   btn.disabled=false; btn.textContent="로그인";
+  logAccess("login");   // 접속 기록(비동기 — 로그인 진행을 막지 않음)
   await startApp();
 }
 function showSignup(){
