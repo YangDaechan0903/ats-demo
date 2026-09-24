@@ -2173,14 +2173,15 @@ function renderRejectView(){
   $("#jobTools").style.display="none";
   $("#jobTitle").textContent="불합격 보관함";
   const items=rejectedAll();
-  $("#jobReq").textContent=`전체 ${items.length}명 · 모든 공고 통합`;
+  const expN=items.filter(({c})=>candExpired(c)).length;
+  $("#jobReq").textContent=`전체 ${items.length}명 · 모든 공고 통합`+(expN?` · 보유 기한 경과(파기 대상) ${expN}명`:"");
   $("#board").innerHTML=`<div class="rej-list">${
     items.length? items.map(({c,j})=>`
       <div class="rej-card">
         <div class="rc-main">
-          <div class="rc-name">${esc(c.name)} <span style="font-size:11px;color:var(--faint);font-weight:600">${esc(c.email||"")}</span></div>
+          <div class="rc-name">${esc(c.name)} <span style="font-size:11px;color:var(--faint);font-weight:600">${esc(c.email||"")}</span> ${consentBadge(c)} ${expiredBadge(c)}</div>
           <div class="rc-sub">${esc(j.title)} · <b>${esc(c.rejectStage||"")}</b> 전형 불합격 · 2026.${c.rejectDate||c.applied}</div>
-          <div class="rc-reason">사유: ${esc(c.rejectReason||"(사유 미입력)")}</div>
+          <div class="rc-reason">사유: ${esc(c.rejectReason||"(사유 미입력)")}${candKeepUntil(c)?` · 보유 기한 ${candKeepUntil(c)}`:""}</div>
         </div>
         <div class="rc-tools">
           <button class="rc-view" onclick="openDetail(${c.id})">상세</button>
@@ -2218,6 +2219,7 @@ function card(c,j){
     <div class="cr">${esc(c.role)} · ${esc(c.hosp)}</div>
     <div class="ct">${(c.tags||[]).slice(0,3).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>
     ${r?`<div class="reapply-badge">⚠ ${r.type==='rejected'?'재지원 · 과거 불합격':'중복지원'}</div>`:""}
+    ${(!c.consent||!c.consent.req)?`<div style="margin:4px 0">${consentBadge(c)}</div>`:""}
     <div class="cf">${an
         ?`<span class="mini-fit" style="color:${bd[1]};background:${bd[2]}">${c.aiResult?"✦ ":""}적합 ${sc}</span>`
         :`<span class="mini-fit" style="color:var(--faint);background:#F3EAE3">미분석</span>`}
@@ -2257,7 +2259,7 @@ function renderGlobalSearch(){
     return `<div class="gs-row" onclick="gotoCandidate(${j.id},${c.id})">
       <div class="gs-av">${esc(empInitial(c.name))}</div>
       <div class="gs-main">
-        <div class="gs-name">${esc(c.name)} ${st}</div>
+        <div class="gs-name">${esc(c.name)} ${st} ${consentBadge(c)} ${expiredBadge(c)}</div>
         <div class="gs-sub">${esc(c.role||"")}${c.hosp&&c.hosp!=="—"?" · "+esc(c.hosp):""} · <b>${esc(j.title)}</b></div>
         ${(c.tags||[]).length?`<div class="gs-tags">${(c.tags||[]).slice(0,4).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</div>`:""}
         ${rej&&c.rejectReason?`<div class="gs-reason">사유: ${esc(c.rejectReason)}</div>`:""}
@@ -2401,6 +2403,62 @@ function renderDetail(){
   if(rej){rb.textContent="↺ 복원";rb.style.color="";rb.style.borderColor="";rb.onclick=restoreFromDetail;}
   else{rb.textContent="불합격";rb.style.color="#6B4A3A";rb.style.borderColor="#DCC8BB";rb.onclick=openRej;}
 }
+/* ── 지원자 개인정보 동의 · 보유기간 (개인정보보호법 제15·21조) ──
+   c.consent = { req:필수 수집·이용 동의, opt:선택(인재풀·재지원 이력·면접 기록 보관) 동의, date, method, memo }
+   · 보유기간 기산점: 채용 종료(불합격 처리일). 선택 동의자 CONSENT_KEEP_OPT_YEARS년, 그 외 CONSENT_KEEP_BASE_DAYS일.
+   · 기간이 지나면 "파기 대상"으로 표시만 함(자동 삭제 없음 — 파기 여부는 회사가 결정). 최종 합격·입사자는 임직원 기록으로 관리. */
+const CONSENT_KEEP_OPT_YEARS=10;
+const CONSENT_KEEP_BASE_DAYS=180;
+const CONSENT_METHODS=["서면","이메일","채용 사이트","기타"];
+function candEndISO(c){
+  if(!c || !c.rejected) return "";
+  if(c.rejectDateISO) return c.rejectDateISO;
+  const m=String(c.rejectDate||"").match(/^(\d{2})\.(\d{2})$/);   // 구 데이터(월.일) — 화면 표기와 같이 2026년으로 간주
+  return m ? `2026-${m[1]}-${m[2]}` : "";
+}
+function candKeepUntil(c){
+  const end=candEndISO(c); if(!end) return "";
+  const d=new Date(end+"T00:00:00Z");
+  if(c.consent && c.consent.req && c.consent.opt) d.setUTCFullYear(d.getUTCFullYear()+CONSENT_KEEP_OPT_YEARS);
+  else d.setUTCDate(d.getUTCDate()+CONSENT_KEEP_BASE_DAYS);
+  return d.toISOString().slice(0,10);
+}
+function candExpired(c){ const u=candKeepUntil(c); return !!u && u<todayISO(); }
+function consentBadge(c){
+  const k=c&&c.consent;
+  if(!k || !k.req) return `<span style="display:inline-block;font-size:10.5px;font-weight:800;color:#A04A2B;background:#F6E3D8;border-radius:10px;padding:2px 8px">⚠ 동의 미확인</span>`;
+  return `<span style="display:inline-block;font-size:10.5px;font-weight:800;color:#3B6B3B;background:#E4EFE1;border-radius:10px;padding:2px 8px">✓ 동의${k.opt?` · 인재풀 ${CONSENT_KEEP_OPT_YEARS}년`:" (필수)"}</span>`;
+}
+function expiredBadge(c){
+  return candExpired(c) ? `<span style="display:inline-block;font-size:10.5px;font-weight:800;color:#fff;background:#A04A2B;border-radius:10px;padding:2px 8px">🗑 파기 대상</span>` : "";
+}
+function consentSec(c){
+  const k=c.consent||{};
+  const until=candKeepUntil(c);
+  const endTxt=c.rejected
+    ? (until ? `보유 기한 <b>${until}</b> (${k.req&&k.opt?`선택 동의 · 채용 종료 후 ${CONSENT_KEEP_OPT_YEARS}년`:`채용 종료 후 ${CONSENT_KEEP_BASE_DAYS}일`})${candExpired(c)?` — <b style="color:#A04A2B">기한 경과, 파기 대상</b>`:""}` : "보유 기한: 불합격 처리일 확인 불가")
+    : (c.stage==="pass" ? "최종 합격자 — 입사 시 임직원 기록으로 관리" : `채용 진행 중 — 채용 종료 후 ${k.req&&k.opt?CONSENT_KEEP_OPT_YEARS+"년":CONSENT_KEEP_BASE_DAYS+"일"} 보관`);
+  return `<div class="side-sec"><div class="sh"><h4>개인정보 동의</h4>${consentBadge(c)}</div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-bottom:6px;cursor:pointer"><input type="checkbox" ${k.req?"checked":""} onchange="setConsent('req',this.checked)"> <span><b>[필수]</b> 채용 전형을 위한 개인정보 수집·이용</span></label>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-bottom:10px;cursor:pointer"><input type="checkbox" ${k.opt?"checked":""} ${k.req?"":"disabled"} onchange="setConsent('opt',this.checked)"> <span><b>[선택]</b> 인재풀 등록 및 재지원 이력·면접 기록 보관 (${CONSENT_KEEP_OPT_YEARS}년)</span></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="efield" style="flex:1;min-width:130px"><label>동의일</label><input type="date" value="${esc(k.date||"")}" onchange="setConsent('date',this.value)"></div>
+      <div class="efield" style="flex:1;min-width:110px"><label>동의 방법</label><select onchange="setConsent('method',this.value)"><option value="">선택</option>${CONSENT_METHODS.map(m=>`<option ${k.method===m?"selected":""}>${m}</option>`).join("")}</select></div>
+    </div>
+    <div class="efield" style="margin-top:8px"><label>증빙 메모</label><input value="${esc(k.memo||"")}" placeholder="예: 서면 동의서 인사팀 보관 / 사람인 지원 시 동의" onchange="setConsent('memo',this.value)"></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5">${endTxt}</div>
+  </div>`;
+}
+function setConsent(k,v){
+  const c=findCand(openId); if(!c) return;
+  c.consent=Object.assign({req:false,opt:false,date:"",method:"",memo:""}, c.consent||{});
+  if(k==="memo") v=String(v||"").slice(0,200);
+  c.consent[k]=v;
+  if(k==="req" && !v) c.consent.opt=false;                 // 필수 미동의면 선택 동의도 해제
+  if(k==="req" && v && !c.consent.date) c.consent.date=todayISO();
+  save(); render();
+  if(!editMode) $("#dSide").innerHTML=sideView(c,jobOf(openId));   // 이력서 미리보기는 다시 그리지 않음
+}
 function sideView(c,j){
   const a=analyze(c,j);
   const rate=[1,2,3,4,5].map(i=>`<i class="${i<=c.rate?'on':''}"></i>`).join("");
@@ -2462,7 +2520,7 @@ function sideView(c,j){
       </div>
     </div>` : "";
 
-  return rejB+rpB+analysisHtml+hireHtml+`
+  return rejB+rpB+consentSec(c)+analysisHtml+hireHtml+`
     <div class="side-sec"><div class="sh"><h4>인적 · 지원 정보</h4>
       <button class="edit-btn" onclick="startEdit()">✎ 수정</button></div>
       <div class="kv"><span class="k">직무</span><span class="v">${esc(c.role)}</span></div>
@@ -2619,16 +2677,17 @@ function confirmRej(){
   c.rejectStage=STAGES[stageIdx(c.stage)].name;
   c.rejectReason=$("#rejReason").value.trim()||"(사유 미입력)";
   c.rejectDate=today();
+  c.rejectDateISO=todayISO();   // 보유기간 계산용(연도 포함)
   save();closeRej();closeDetail();render();
 }
 function restoreFromDetail(){
   const c=findCand(openId); if(!c)return;
-  c.rejected=false;c.rejectReason="";c.rejectStage="";c.rejectDate="";
+  c.rejected=false;c.rejectReason="";c.rejectStage="";c.rejectDate="";c.rejectDateISO="";
   save();render();renderDetail();
 }
 function restoreCand(id){
   const c=findCand(id); if(!c)return;
-  c.rejected=false;c.rejectReason="";c.rejectStage="";c.rejectDate="";
+  c.rejected=false;c.rejectReason="";c.rejectStage="";c.rejectDate="";c.rejectDateISO="";
   save();render();
 }
 function openReject(){view="rejected";closeDetail();render();}
