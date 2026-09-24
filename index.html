@@ -1587,14 +1587,15 @@ async function sealRrns(){
   }
 }
 /* 여러 직원의 주민번호를 한 번에 풀어 Map(empId→번호)으로 반환. 권한 없거나 실패 시 마스킹 값 */
-async function rrnPlainMap(emps){
+async function rrnPlainMap(emps, purpose){
   const m=new Map(); const list=(emps||[]).filter(Boolean);
   const enc=list.filter(e=>isRrnEnc(e.residentNo));
   list.filter(e=>e.residentNo && !isRrnEnc(e.residentNo)).forEach(e=>m.set(e.id, canViewHrSensitive()?String(e.residentNo):rrnMask(e.residentNo)));
   if(!enc.length) return m;
   if(!canViewHrSensitive()){ enc.forEach(e=>m.set(e.id, rrnShown(e))); return m; }
   try{
-    const d=await rrnCall({action:"decrypt", companyId:CURRENT_COMPANY_ID, values:enc.map(e=>e.residentNo)});
+    const tgt=enc.length===1 ? (enc[0].name||"") : `${enc[0].name||""} 외 ${enc.length-1}명`;   // 접속 기록용(서버가 기록)
+    const d=await rrnCall({action:"decrypt", companyId:CURRENT_COMPANY_ID, values:enc.map(e=>e.residentNo), purpose:purpose||"", target:tgt});
     enc.forEach((e,i)=>m.set(e.id, (d.values||[])[i]||rrnShown(e)));
   }catch(err){
     alert("주민등록번호 원문을 불러오지 못해 가린 번호로 표시합니다.\n("+(err&&err.message||err)+")");
@@ -1615,7 +1616,7 @@ async function rrnReveal(){
   const e=findEmp(openEmpId); if(!e || !isRrnEnc(e.residentNo)) return;
   if(!canViewHrSensitive()){ alert("주민등록번호 원문 열람 권한이 없습니다."); return; }
   try{
-    const d=await rrnCall({action:"decrypt", companyId:CURRENT_COMPANY_ID, values:[e.residentNo]});
+    const d=await rrnCall({action:"decrypt", companyId:CURRENT_COMPANY_ID, values:[e.residentNo], purpose:"원문 보기", target:e.name||""});
     alert(`${e.name||""} 주민등록번호\n\n${(d.values||[])[0]||"-"}\n\n※ 원문은 화면·기기에 저장되지 않습니다.`);
   }catch(err){ alert("원문 조회에 실패했습니다.\n("+(err&&err.message||err)+")"); }
 }
@@ -3478,7 +3479,9 @@ function rpExcel(){
     ...rows.map(r=>[r.label,r.a,r.b,r.d,rpPct(r.a,r.b)]),["합계",A.total,B.total,B.total-A.total,rpPct(A.total,B.total)]];
   const ws=XLSX.utils.aoa_to_sheet(aoa); ws["!cols"]=[{wch:24},{wch:14},{wch:14},{wch:14},{wch:10}];
   const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"급여비교");
-  XLSX.writeFile(wb,`급여대시보드_${RP.a}_vs_${RP.b}_${byL}.xlsx`);
+  const _fn=`급여대시보드_${RP.a}_vs_${RP.b}_${byL}.xlsx`;
+  XLSX.writeFile(wb,_fn);
+  logAccess("download", _fn, {count:rows.length, kind:"급여 대시보드", by:byL});
 }
 function renderReport(){
   const root=document.getElementById("reportRoot"); if(!root) return;
@@ -5123,14 +5126,18 @@ function writeExcelFile(rows, filename){
 async function downloadExcelBlank(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
-  const _rm=await rrnPlainMap(run.rows.map(r=>findEmp(r.empId)));
-  writeExcelFile(buildExcelRows(run, true, _rm), `급여빈양식_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
+  const _rm=await rrnPlainMap(run.rows.map(r=>findEmp(r.empId)), "급여 빈양식 엑셀");
+  const _fn=`급여빈양식_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`;
+  writeExcelFile(buildExcelRows(run, true, _rm), _fn);
+  logAccess("download", _fn, {count:run.rows.length, kind:"급여 빈양식"});
 }
 async function downloadExcelTemplate(){
   const run=PAYROLL_RUNS.find(r=>r.id===curPayrollRunId); if(!run) return;
   if(typeof XLSX==="undefined"){ alert("엑셀 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요."); return; }
-  const _rm=await rrnPlainMap(run.rows.map(r=>findEmp(r.empId)));
-  writeExcelFile(buildExcelRows(run, false, _rm), `급여작업데이터_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`);
+  const _rm=await rrnPlainMap(run.rows.map(r=>findEmp(r.empId)), "급여 작업데이터 엑셀");
+  const _fn=`급여작업데이터_${run.yearMonth}_${(run.category||"급여").replace(/[^\w가-힣]/g,"")}.xlsx`;
+  writeExcelFile(buildExcelRows(run, false, _rm), _fn);
+  logAccess("download", _fn, {count:run.rows.length, kind:"급여 작업데이터"});
 }
 
 let excelUploadMatchBy="code"; // 'code'(사번) | 'rrn'(주민번호)
@@ -5168,7 +5175,7 @@ function handleExcelFile(file){
     catch(err){ alert("엑셀 파일을 읽을 수 없습니다: "+err.message); return; }
     const ws=wb.Sheets[wb.SheetNames[0]];
     const aoa=XLSX.utils.sheet_to_json(ws, {header:1, defval:0});
-    (excelUploadMatchBy==="rrn" ? rrnPlainMap(EMPLOYEES) : Promise.resolve(null)).then(m=>validateAndPreviewExcel(aoa, run, m));
+    (excelUploadMatchBy==="rrn" ? rrnPlainMap(EMPLOYEES, "엑셀 업로드 주민번호 매칭") : Promise.resolve(null)).then(m=>validateAndPreviewExcel(aoa, run, m));
   };
   reader.onerror=()=>alert("파일을 읽는 중 오류가 발생했습니다.");
   reader.readAsArrayBuffer(file);
@@ -6209,7 +6216,7 @@ async function printYearEndSlip(empId, year, isLeaver){
   const _w=window.open("","_blank");
   if(_w) _w.document.write('<p style="font-family:sans-serif;padding:20px">불러오는 중…</p>');
   const e=findEmp(empId); const r=calcYearEndSettlement(e, year, isLeaver);
-  const _rrn=(await rrnPlainMap([e])).get(e.id)||"";
+  const _rrn=(await rrnPlainMap([e], "원천징수영수증 인쇄")).get(e.id)||"";
   const ci=companyInfoFull();
   const zero=(v)=>v?v.toLocaleString("ko-KR"):"0";
   const fam=(e.family||[]).filter(f=>f.incomeOk!==false && (val(f.relation)||val(f.name)));
