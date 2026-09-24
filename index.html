@@ -896,7 +896,6 @@
     <div class="side-foot">
       <div id="cloudStatus" class="cloud off">☁ 연결 확인 중…</div>
       <a onclick="cloudRefresh()">🔄 동기화 새로고침</a>
-      <a onclick="resetDemo()" style="margin-left:10px">데모 초기화</a>
     </div>
   </aside>
 
@@ -1422,6 +1421,9 @@ const EMP_STORE = "hris_employees_v1"; // 임직원 로컬 캐시
 const PAY_STORE = "hris_payroll_v1";   // 급여관리(보상) 로컬 캐시
 const COMPANY_STORE = "hris_company_v1"; // 사업자정보 로컬 캐시
 const COMPANY_SEL_STORE = "hris_selected_company_v1"; // 마지막으로 선택한 회사(계열사) id
+const ATT_JOBS_PREFIX = "hris_att_jobs_v2:";   // 회사별 첨부(이력서·녹음) 로컬 캐시 — 첨부 서버 이전 전까지
+const ATT_EMPS_PREFIX = "hris_att_emps_v2:";   // 회사별 첨부(근로계약서 파일) 로컬 캐시
+const LEGACY_CACHE_OWNER = (()=>{ try{ return localStorage.getItem(COMPANY_SEL_STORE); }catch(e){ return null; } })();   // 예전 캐시의 소유 회사 추정용
 const TOKEN_STORE = "ats_session_v1"; // 로그인 세션 보관
 let cloudOK = false;
 let session = null;                   // {access_token, refresh_token, expires_at, email}
@@ -1509,8 +1511,12 @@ async function signIn(email, password){
 async function signOut(){
   // 로그아웃 접속 기록(최대 1.5초 대기 — 실패해도 로그아웃은 진행)
   try{ await Promise.race([logAccess("logout"), new Promise(r=>setTimeout(r,1500))]); }catch(e){}
+  // 저장되지 않은 변경이 있으면 먼저 서버에 확정(최대 8초)
+  try{ clearTimeout(pushTimer); if(hasUnsaved() && !SAVE_BLOCKED) await Promise.race([cloudPush(), new Promise(r=>setTimeout(r,8000))]); }catch(e){}
+  SAVE_SEQ=SAVED_SEQ;   // 로그아웃 확인창 방지
   saveSession(null);
-  try{ localStorage.removeItem(STORE); }catch(e){}   // 로컬 캐시도 비워 남의 기기에 데이터가 남지 않게
+  // 업무 데이터 캐시(예전 방식)는 삭제. 첨부파일 캐시는 서버 저장소 이전 전까지 유일한 사본이라 유지한다.
+  try{ localStorage.removeItem(PAY_STORE); localStorage.removeItem(COMPANY_STORE); }catch(e){}
   try{ localStorage.removeItem(COMPANY_SEL_STORE); }catch(e){}
   location.reload();
 }
@@ -1526,6 +1532,7 @@ function lightCopy(){
 }
 let pushTimer=null;
 function save(){
+  SAVE_SEQ++;
   try{ persistLocal(); }catch(e){ console.warn("로컬 저장 실패",e); }
   clearTimeout(pushTimer);
   pushTimer = setTimeout(cloudPush, 700);   // 잠깐 모아서 한 번에 전송
@@ -1640,53 +1647,86 @@ function rrnFieldInput(e,on){
   return `<div style="display:flex;gap:6px;align-items:center"><input ${D(on)} value="${esc(rrnShown(e))}" onchange="rrnFieldChange(this)" placeholder="000000-0000000" autocomplete="off" style="flex:1;min-width:0">${enc&&canViewHrSensitive()?`<button type="button" class="edit-btn" style="white-space:nowrap;padding:6px 10px;font-size:11px" onclick="rrnReveal()">원문 보기</button>`:""}</div>`
     + (enc?`<div style="font-size:10.5px;color:#2F6B4A;margin-top:3px">🔒 암호화 저장됨</div>`:(e.residentNo?`<div style="font-size:10.5px;color:#B23B3B;margin-top:3px">⚠ 저장 시 자동 암호화 예정</div>`:""));
 }
-async function cloudPush(){
-  if(!CURRENT_COMPANY_ID){ setCloud(false, "⚠ 소속 회사 없음(로컬 저장됨)"); return; }
+// ── 저장(클라우드) ── 데이터 보호 증분2
+//   · 서버 함수 save_company_data로 저장: 불러온 버전과 서버 버전이 다르면(다른 사용자 저장·관리자 복구) 덮어쓰지 않고 저장을 멈춘다.
+//   · 저장은 한 번에 하나씩 순서대로(PUSH_CHAIN). 회사 id는 첫 await 전에 고정.
+//   · 저장할 데이터 키만 보낸다(patch) → 서버의 다른 키(교육 등)는 보존.
+let DATA_VER={};          // 회사별로 마지막으로 확인한 서버 버전
+let SAVE_BLOCKED=null;    // null | "load" | "conflict"
+let LOADING=false;        // 불러오는 중에는 저장 금지
+let DATA_READY=false;     // 서버에서 정상적으로 불러온 뒤에만 true
+let PUSH_CHAIN=Promise.resolve();
+let SAVE_SEQ=0, SAVED_SEQ=0;   // 저장 요청 순번 / 서버 반영 완료 순번 (미저장 여부 판단)
+function hasUnsaved(){ return SAVE_SEQ>SAVED_SEQ; }
+function cloudPush(){
+  PUSH_CHAIN = PUSH_CHAIN.then(cloudPushCore, cloudPushCore);
+  return PUSH_CHAIN;
+}
+async function saveBlob(companyId, patch){
+  const key=String(companyId);
+  const r=await sbRpc("save_company_data",{ p_company:key, p_patch:patch, p_version:(DATA_VER[key]===undefined?null:DATA_VER[key]) });
+  if(r.ok && r.data && r.data.ok){ DATA_VER[key]=r.data.version; return "ok"; }
+  if(r.ok && r.data && r.data.conflict) return "conflict";
+  return "fail";
+}
+async function cloudPushCore(){
+  if(SAVE_BLOCKED || LOADING || !DATA_READY) return;
+  const cid=CURRENT_COMPANY_ID, repId=REP_COMPANY_ID;   // 첫 await 전에 고정
+  if(!cid){ setCloud(false, "⚠ 소속 회사 없음"); return; }
+  const seq=SAVE_SEQ;
   await sealRrns();   // 평문 주민번호가 있으면 저장 전에 서버에서 암호화(실패 시 경고 후 다음 저장 때 재시도)
-  const single = !REP_COMPANY_ID || String(REP_COMPANY_ID)===String(CURRENT_COMPANY_ID);
-  const H = await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" });
+  if(SAVE_BLOCKED || LOADING || !DATA_READY || String(cid)!==String(CURRENT_COMPANY_ID)) return;   // 그사이 회사 전환·차단 시 중단
+  const single = !repId || String(repId)===String(cid);
+  // 보낼 데이터를 이 시점에 확정(이후 화면 변경과 섞이지 않게)
+  const jobs=lightCopy(), emps=lightEmployees(), pay=PAYROLL_RUNS, info=COMPANY_INFO, tr=TRAINING_COURSES;
   try{
     if(single){
-      // 단일회사: jobs·employees·payroll·companyInfo를 현재 회사에 한 번에 저장 (기존 동작)
-      const payload = { jobs: lightCopy(), employees: lightEmployees(), payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO, trainingCourses: TRAINING_COURSES };
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
-        method:"POST", headers:H,
-        body: JSON.stringify({ company_id: CURRENT_COMPANY_ID, data: payload, updated_at:new Date().toISOString() })
-      });
-      if(res.ok) setCloud(true, "☁ 동기화됨"); else setCloud(false, "⚠ 동기화 오류 "+res.status);
+      const s=await saveBlob(cid, { jobs, employees:emps, payrollRuns:pay, companyInfo:info, trainingCourses:tr });
+      if(s==="ok"){ SAVED_SEQ=Math.max(SAVED_SEQ,seq); setCloud(true, "☁ 동기화됨"); }
+      else if(s==="conflict") blockSaving("conflict");
+      else setCloud(false, "⚠ 저장 실패 — 잠시 후 자동 재시도");
+      if(s==="fail") scheduleRetry();
       return;
     }
-
-    // ── 다중회사(계열사): 쓰기 분리 ──
-    // (A) 현재 회사(계열사) ← 임직원·급여·회사정보. jobs는 대표 회사에만 두므로 여기선 빈 배열로 청소.
-    const curPayload = { jobs: [], employees: lightEmployees(), payrollRuns: PAYROLL_RUNS, companyInfo: COMPANY_INFO, trainingCourses: TRAINING_COURSES };
-    const curRes = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
-      method:"POST", headers:H,
-      body: JSON.stringify({ company_id: CURRENT_COMPANY_ID, data: curPayload, updated_at:new Date().toISOString() })
-    });
-
-    // (B) 대표 회사 ← ATS(jobs)만 갱신.
-    //     ⚠ upsert가 data blob 전체를 덮으므로, 대표 회사의 임직원·급여·회사정보를 먼저 읽어 보존한다.
-    //        읽기가 실패하면(대표 데이터를 알 수 없으면) jobs 쓰기를 건너뛴다 → 대표 회사 데이터 파괴 방지.
-    let repOk=false;
-    try{
-      const g = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${REP_COMPANY_ID}&select=data`, { headers: await sbHeaders() });
-      if(!g.ok) throw new Error("rep read "+g.status);   // 읽기 실패 → 아래 catch로 → repOk=false, 대표 보존
-      const rows = await g.json();
-      let repData = { jobs:[], employees:[], payrollRuns:[], companyInfo:{} };
-      if(rows.length){ const u=unpackData(rows[0].data); if(u) repData=u; }
-      const repPayload = { jobs: lightCopy(), employees: repData.employees||[], payrollRuns: repData.payrollRuns||[], companyInfo: repData.companyInfo||{}, trainingCourses: repData.trainingCourses||[] };
-      const rRes = await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
-        method:"POST", headers:H,
-        body: JSON.stringify({ company_id: REP_COMPANY_ID, data: repPayload, updated_at:new Date().toISOString() })
-      });
-      repOk = rRes.ok;
-    }catch(e){ repOk=false; }
-
-    if(curRes.ok && repOk) setCloud(true, "☁ 동기화됨");
-    else setCloud(false, "⚠ 동기화 오류(ATS "+(repOk?"OK":"보류")+" · 회사 "+(curRes.ok?"OK":"실패")+")");
-  }catch(e){ setCloud(false, "⚠ 오프라인(로컬 저장됨)"); }
+    // 다중회사(계열사): (A) 현재 회사 ← 임직원·급여·회사정보(jobs는 대표 회사에만) / (B) 대표 회사 ← jobs만
+    const a=await saveBlob(cid, { jobs:[], employees:emps, payrollRuns:pay, companyInfo:info, trainingCourses:tr });
+    if(a==="conflict"){ blockSaving("conflict"); return; }
+    const b=await saveBlob(repId, { jobs });
+    if(b==="conflict"){ blockSaving("conflict"); return; }
+    if(a==="ok" && b==="ok"){ SAVED_SEQ=Math.max(SAVED_SEQ,seq); setCloud(true, "☁ 동기화됨"); }
+    else { setCloud(false, "⚠ 저장 실패(ATS "+(b==="ok"?"OK":"실패")+" · 회사 "+(a==="ok"?"OK":"실패")+") — 자동 재시도"); scheduleRetry(); }
+  }catch(e){ setCloud(false, "⚠ 오프라인 — 자동 재시도"); scheduleRetry(); }
 }
+let retryTimer=null;
+function scheduleRetry(){
+  clearTimeout(retryTimer);
+  retryTimer=setTimeout(()=>{ if(hasUnsaved() && !SAVE_BLOCKED) cloudPush(); }, 15000);
+}
+// 회사 전환 전: 대기 중인 저장을 즉시 확정(유실·회사 간 섞임 방지)
+async function flushBeforeSwitch(){
+  clearTimeout(pushTimer);
+  if(hasUnsaved()) await cloudPush(); else await PUSH_CHAIN;
+}
+// 저장 차단 + 상단 안내 배너
+function blockSaving(kind){
+  SAVE_BLOCKED=kind;
+  clearTimeout(pushTimer); clearTimeout(retryTimer);
+  setCloud(false, kind==="load" ? "⚠ 불러오기 실패 — 저장 중지" : "⚠ 다른 곳에서 변경됨 — 저장 중지");
+  let el=document.getElementById("saveBlockBanner");
+  if(!el){ el=document.createElement("div"); el.id="saveBlockBanner"; document.body.appendChild(el); }
+  const msg = kind==="load"
+    ? "서버에서 데이터를 불러오지 못해 <b>데이터 보호를 위해 저장을 멈췄습니다.</b> 인터넷 연결을 확인한 뒤 새로고침해 주세요."
+    : "다른 사용자(또는 관리자 복구)가 데이터를 먼저 변경했습니다. <b>덮어쓰기를 막기 위해 저장을 멈췄습니다.</b> 새로고침한 뒤 마지막 입력 내용을 다시 확인해 주세요.";
+  el.innerHTML=`<span>⚠ ${msg}</span><button onclick="SAVE_BLOCKED_RELOAD()">새로고침</button>`;
+  el.style.cssText="position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:100000;max-width:min(760px,94vw);display:flex;gap:12px;align-items:center;background:#7A2E22;color:#fff;border-radius:12px;padding:12px 14px 12px 16px;font-size:13px;line-height:1.5;box-shadow:0 10px 30px rgba(0,0,0,.25)";
+  const btn=el.querySelector("button");
+  if(btn) btn.style.cssText="flex-shrink:0;background:#fff;color:#7A2E22;border:0;border-radius:8px;padding:7px 12px;font:inherit;font-weight:800;cursor:pointer";
+}
+function SAVE_BLOCKED_RELOAD(){ SAVE_SEQ=SAVED_SEQ; location.reload(); }
+// 저장되지 않은 변경이 있으면 창 닫기·새로고침 전에 경고
+window.addEventListener("beforeunload", e=>{
+  if(!SAVE_BLOCKED && hasUnsaved()){ e.preventDefault(); e.returnValue=""; }
+});
 // data(jsonb) 파서 — company_data/app_state 공용. 두 형식 허용: (구형) JOBS 배열 그대로 / (신형) {jobs, employees, users, payrollRuns, companyInfo}
 function unpackData(d){
   if(Array.isArray(d)) return { jobs:d, employees:[], users:[], payrollRuns:[], companyInfo:{}, trainingCourses:[] };       // 구형 → 자동 마이그레이션
@@ -1697,83 +1737,109 @@ async function load(){
   // ── 데이터 소스 분리 (ATS 공유) ──
   //   ATS(JOBS) ............ 대표 회사(REP_COMPANY_ID) company_data — 그룹(계열사) 통합 공유
   //   임직원·급여·회사정보 ... 현재 회사(CURRENT_COMPANY_ID) company_data — 계열사별 완전 분리
-  //   REP===CURRENT(단일회사)면 한 번만 읽어 재사용.
-  const single = !REP_COMPANY_ID || !CURRENT_COMPANY_ID || String(REP_COMPANY_ID)===String(CURRENT_COMPANY_ID);
+  // ★ 데이터 보호 원칙
+  //   · 서버(클라우드)가 유일한 정본. 불러오기에 실패하면 빈 화면으로 두고 저장을 차단한다(빈 데이터 덮어쓰기 방지).
+  //   · 로컬 캐시는 첨부파일(이력서·녹음·계약서 파일)만 회사별 키로 보관하며, 업무 데이터의 대체 원본으로 쓰지 않는다.
+  //   · 불러오는 동안(LOADING)에는 어떤 저장도 하지 않는다.
+  LOADING=true; DATA_READY=false;
+  try{
+    const cid=CURRENT_COMPANY_ID, repId=REP_COMPANY_ID;   // 첫 await 전에 고정
+    const single = !repId || !cid || String(repId)===String(cid);
+    let loadFailed=false;
 
-  // 1) 현재 회사 company_data (임직원·급여·회사정보)
-  let curCloud=null;
-  if(CURRENT_COMPANY_ID){
-    try{
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${CURRENT_COMPANY_ID}&select=data`, { headers: await sbHeaders() });
-      if(res.ok){ const rows=await res.json(); if(rows.length) curCloud=unpackData(rows[0].data); setCloud(true,"☁ 동기화됨"); }
-      else setCloud(false, "⚠ 연결 오류 "+res.status);
-    }catch(e){ setCloud(false, "⚠ 오프라인(로컬 사용)"); }
-  } else {
-    setCloud(false, "⚠ 소속 회사 없음(로컬 사용)");
+    // 1) 현재 회사 company_data (임직원·급여·회사정보)
+    let curCloud=null;
+    if(cid){
+      try{
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${cid}&select=data,version`, { headers: await sbHeaders() });
+        if(res.ok){
+          const rows=await res.json();
+          if(rows.length){ curCloud=unpackData(rows[0].data); DATA_VER[String(cid)]=rows[0].version; }
+          else { DATA_VER[String(cid)]=null; }
+        } else loadFailed=true;
+      }catch(e){ loadFailed=true; }
+    } else {
+      setCloud(false, "⚠ 소속 회사 없음");
+    }
+
+    // 1b) 대표 회사 company_data (ATS 공유원본). REP===CURRENT면 위 결과 재사용.
+    let repCloud = curCloud;
+    if(!single && !loadFailed){
+      repCloud=null;
+      try{
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${repId}&select=data,version`, { headers: await sbHeaders() });
+        if(res.ok){
+          const rows=await res.json();
+          if(rows.length){ repCloud=unpackData(rows[0].data); DATA_VER[String(repId)]=rows[0].version; }
+          else { DATA_VER[String(repId)]=null; }
+        } else loadFailed=true;
+      }catch(e){ loadFailed=true; }
+    }
+
+    // 회사 이전분 companyInfo(마이그레이션으로 companies.company_info에 있을 수 있음) — company_data blob에 없을 때 시드로 사용
+    const ciFromCompany = (CURRENT_COMPANY && CURRENT_COMPANY.company_info && typeof CURRENT_COMPANY.company_info==="object" && Object.keys(CURRENT_COMPANY.company_info).length) ? CURRENT_COMPANY.company_info : null;
+
+    // 예전 로컬 캐시(업무 데이터 전체)는 더 이상 쓰지 않음 — 급여·회사정보 캐시는 즉시 삭제(PC 잔존 방지)
+    try{ localStorage.removeItem(PAY_STORE); }catch(e){}
+    try{ localStorage.removeItem(COMPANY_STORE); }catch(e){}
+
+    if(loadFailed){
+      JOBS=[]; EMPLOYEES=[]; PAYROLL_RUNS=[]; TRAINING_COURSES=[];
+      COMPANY_INFO={...blankCompanyInfo()};
+      USERS=[];
+      blockSaving("load");
+      return;
+    }
+
+    // 첨부파일 재부착용 로컬 맵 (첨부파일은 아직 기기 로컬에만 있음 — 회사별 키로 분리)
+    const jobsOwner=String(single?cid:repId), empsOwner=String(cid);
+    const fileMap=readAttMap(ATT_JOBS_PREFIX, STORE, jobsOwner, "jobs");
+    const empFileMap=readAttMap(ATT_EMPS_PREFIX, EMP_STORE, empsOwner, "emps");
+
+    // ── JOBS ← 대표 회사(공유 ATS) — 없으면 빈 목록(데모 데이터 자동 생성 안 함) ──
+    const repJobs = (repCloud && Array.isArray(repCloud.jobs)) ? repCloud.jobs : [];
+    for(const j of repJobs) for(const c of (j.cands||[])){ const f=fileMap[c.id]; if(f){ if(f.fileData)c.fileData=f.fileData; if(f.audioData)c.audioData=f.audioData; } }
+    JOBS=repJobs;
+
+    // ── 임직원·급여·회사정보 ← 현재 회사(계열사별 분리) ──
+    if(curCloud){
+      for(const e of (curCloud.employees||[])) { const f=empFileMap[e.id]; if(f && f.contractFileData) e.contractFileData=f.contractFileData; }
+      EMPLOYEES=curCloud.employees||[];
+      PAYROLL_RUNS=curCloud.payrollRuns||[];
+      TRAINING_COURSES=Array.isArray(curCloud.trainingCourses)?curCloud.trainingCourses:[];
+      // companyInfo 우선순위: company_data blob → 회사 이전분(companies) → 빈값
+      COMPANY_INFO={...blankCompanyInfo(), ...((curCloud.companyInfo&&Object.keys(curCloud.companyInfo).length)?curCloud.companyInfo:(ciFromCompany||{}))};
+    } else {
+      // 서버에 아직 이 회사 데이터가 없음(신규 회사) → 빈 상태로 시작. 첫 입력 시 서버에 생성됨.
+      EMPLOYEES=[]; PAYROLL_RUNS=[]; TRAINING_COURSES=[];
+      COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||{})};
+    }
+    USERS=[];
+    if(cid) setCloud(true,"☁ 동기화됨");
+    DATA_READY=true;
+  } finally {
+    LOADING=false;
   }
-
-  // 1b) 대표 회사 company_data (ATS 공유원본). REP===CURRENT면 위 결과 재사용.
-  let repCloud = curCloud;
-  if(!single){
-    repCloud=null;
-    try{
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${REP_COMPANY_ID}&select=data`, { headers: await sbHeaders() });
-      if(res.ok){ const rows=await res.json(); if(rows.length) repCloud=unpackData(rows[0].data); }
-    }catch(e){ /* 대표 회사 ATS 읽기 실패 → 아래 로컬/시드 폴백 */ }
-  }
-
-  // (봉인) 사용자/승인 목록은 더 이상 app_state에서 읽지 않음 — 권한 정본은 memberships. USERS는 하위호환용 빈 배열.
-
-  // 회사 이전분 companyInfo(마이그레이션으로 companies.company_info에 있을 수 있음) — company_data blob에 없을 때 시드로 사용
-  const ciFromCompany = (CURRENT_COMPANY && CURRENT_COMPANY.company_info && typeof CURRENT_COMPANY.company_info==="object" && Object.keys(CURRENT_COMPANY.company_info).length) ? CURRENT_COMPANY.company_info : null;
-
-  // 로컬 캐시 (STORE=jobs, EMP_STORE=employees) — 첨부파일 복원 + 오프라인
-  let localJobs=null, localEmps=null, localPay=null, localCompany=null;
-  try{ const r=localStorage.getItem(STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localJobs=a; } }catch(e){}
-  try{ const r=localStorage.getItem(EMP_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localEmps=a; } }catch(e){}
-  try{ const r=localStorage.getItem(PAY_STORE); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) localPay=a; } }catch(e){}
-  try{ const r=localStorage.getItem(COMPANY_STORE); if(r){ const a=JSON.parse(r); if(a&&typeof a==="object") localCompany=a; } }catch(e){}
-
-  // 첨부파일 재부착용 로컬 맵 (첨부파일은 기기 로컬에만 있으므로 클라우드 데이터에 다시 붙여줌)
-  const fileMap={};
-  if(localJobs) for(const j of localJobs) for(const c of (j.cands||[])) fileMap[c.id]={fileData:c.fileData,audioData:c.audioData};
-  const empFileMap={};
-  if(localEmps) for(const e of localEmps) empFileMap[e.id]={contractFileData:e.contractFileData,photoData:e.photoData};
-
-  const haveRepJobs = !!(repCloud && repCloud.jobs && repCloud.jobs.length);
-
-  // ── JOBS ← 대표 회사(공유 ATS) ──
-  if(haveRepJobs){
-    for(const j of repCloud.jobs) for(const c of (j.cands||[])){ const f=fileMap[c.id]; if(f){ if(f.fileData)c.fileData=f.fileData; if(f.audioData)c.audioData=f.audioData; } }
-    JOBS=repCloud.jobs;
-  } else if(localJobs && localJobs.length){
-    JOBS=localJobs;
-  } else {
-    JOBS = single ? seed() : [];   // 다중회사에서 대표 jobs가 아직 없으면 빈 목록(대표 회사에 데모 seed가 저장되는 것 방지)
-  }
-
-  // ── 임직원·급여·회사정보 ← 현재 회사(계열사별 분리) ──
-  if(curCloud){
-    for(const e of curCloud.employees) { const f=empFileMap[e.id]; if(f){ if(f.contractFileData)e.contractFileData=f.contractFileData; if(f.photoData)e.photoData=f.photoData; } }
-    EMPLOYEES=curCloud.employees||[];
-    PAYROLL_RUNS=curCloud.payrollRuns||localPay||[];
-    TRAINING_COURSES=Array.isArray(curCloud.trainingCourses)?curCloud.trainingCourses:[];
-    // companyInfo 우선순위: company_data blob → 회사 이전분(companies) → 로컬 → 빈값
-    COMPANY_INFO={...blankCompanyInfo(), ...((curCloud.companyInfo&&Object.keys(curCloud.companyInfo).length)?curCloud.companyInfo:(ciFromCompany||localCompany||{}))};
-  } else {
-    EMPLOYEES=localEmps||[];
-    PAYROLL_RUNS=localPay||[];
-    TRAINING_COURSES=[];
-    COMPANY_INFO={...blankCompanyInfo(), ...(ciFromCompany||localCompany||{})};
-  }
-  USERS=[];
-  persistLocal();
-
-  // 클라우드에 쓸 만한 데이터가 없던 신규 상태면 초기값을 저장.
-  // ※ 단일회사(REP===CURRENT)에서만 여기서 push. 다중회사(계열사)의 쓰기 분리는 증분2에서 처리하므로,
-  //   실수로 계열사 company_data에 jobs가 섞여 들어가지 않도록 여기서는 push하지 않는다.
-  const cloudUsable = haveRepJobs || (curCloud && curCloud.employees.length);
-  if(single && !cloudUsable){ cloudPush(); }
+  persistLocal();   // 회사별 첨부 캐시 갱신(레거시 캐시 이전 포함)
+}
+// 회사별 첨부파일 로컬 맵 읽기. 새 키가 없으면 예전 캐시(회사 구분 없음)를 소유 회사가 확실할 때만 이전한다.
+function readAttMap(prefix, legacyKey, ownerId, kind){
+  try{
+    const r=localStorage.getItem(prefix+ownerId);
+    if(r){ const m=JSON.parse(r); if(m && typeof m==="object") return m; }
+  }catch(e){}
+  // 레거시 캐시: 소속 회사가 1곳뿐인 일반 사용자면 그 회사 것으로 간주. 여러 회사 사용자는 마지막 선택 회사와 같을 때만.
+  let legacy=null;
+  try{ const r=localStorage.getItem(legacyKey); if(r){ const a=JSON.parse(r); if(Array.isArray(a)) legacy=a; } }catch(e){}
+  if(!legacy) return {};
+  const onlyOne = (MY_MEMBERSHIPS||[]).length<=1 && !IS_PLATFORM_ADMIN;
+  const lastSel = LEGACY_CACHE_OWNER;
+  if(!(onlyOne || (lastSel && String(lastSel)===String(ownerId)))) return {};
+  const m={};
+  if(kind==="jobs"){ for(const j of legacy) for(const c of (j.cands||[])) if(c.fileData||c.audioData) m[c.id]={fileData:c.fileData||"",audioData:c.audioData||""}; }
+  else { for(const e of legacy) if(e.contractFileData) m[e.id]={contractFileData:e.contractFileData}; }
+  try{ localStorage.setItem(prefix+ownerId, JSON.stringify(m)); localStorage.removeItem(legacyKey); }catch(e){}
+  return m;
 }
 // 로그인 후: 내가 속한 회사(테넌트)를 확정한다. 단일회사 UX이므로 보통 활성 멤버십 1개.
 // 멤버십이 없으면 CURRENT_COMPANY_ID=null → load()는 로컬/seed로 폴백(증분2 온보딩·이전에서 처리).
@@ -1822,6 +1888,8 @@ async function resolveCompanyContext(preferredCompanyId){
 async function switchCompany(companyId){
   const m = MY_MEMBERSHIPS.find(x=>String(x.company_id)===String(companyId));
   if(!m || String(companyId)===String(CURRENT_COMPANY_ID)) { renderCompanySwitcher(); return; }
+  await flushBeforeSwitch();   // ★ 현재 회사의 대기 저장을 먼저 확정(유실·회사 간 섞임 방지)
+  if(SAVE_BLOCKED==="conflict"){ renderCompanySwitcher(); return; }
   CURRENT_MEMBERSHIP=m; CURRENT_COMPANY_ID=m.company_id; CURRENT_COMPANY=m._company;
   try{ localStorage.setItem(COMPANY_SEL_STORE, companyId); }catch(e){}
   logAccess("company_switch", m._name||"");   // 전환한 회사 기준으로 기록
@@ -1860,10 +1928,18 @@ function saveUsers(){
   cloudPushUsers();   // app_state에 users 병합 저장 (기존 함수 재사용)
 }
 function persistLocal(){
-  try{ localStorage.setItem(STORE, JSON.stringify(JOBS)); }catch(e){}
-  try{ localStorage.setItem(EMP_STORE, JSON.stringify(EMPLOYEES)); }catch(e){}
-  try{ localStorage.setItem(PAY_STORE, JSON.stringify(PAYROLL_RUNS)); }catch(e){}
-  try{ localStorage.setItem(COMPANY_STORE, JSON.stringify(COMPANY_INFO)); }catch(e){}
+  // 업무 데이터는 서버가 정본 → 로컬에는 첨부파일만 회사별로 보관(첨부 서버 이전 전까지).
+  // 서버에서 정상적으로 불러온 뒤에만 기록(불러오기 실패 시 빈 목록으로 첨부 캐시를 덮어쓰지 않도록).
+  if(LOADING || !DATA_READY) return;
+  const cid=CURRENT_COMPANY_ID, repId=REP_COMPANY_ID||CURRENT_COMPANY_ID;
+  if(repId){
+    const m={}; for(const j of (JOBS||[])) for(const c of (j.cands||[])) if(c.fileData||c.audioData) m[c.id]={fileData:c.fileData||"",audioData:c.audioData||""};
+    try{ localStorage.setItem(ATT_JOBS_PREFIX+String(repId), JSON.stringify(m)); }catch(e){ console.warn("첨부 로컬 저장 실패(저장 공간 부족 가능)",e); }
+  }
+  if(cid){
+    const m={}; for(const e of (EMPLOYEES||[])) if(e.contractFileData) m[e.id]={contractFileData:e.contractFileData};
+    try{ localStorage.setItem(ATT_EMPS_PREFIX+String(cid), JSON.stringify(m)); }catch(e){ console.warn("계약서 파일 로컬 저장 실패(저장 공간 부족 가능)",e); }
+  }
 }
 
 let JOBS=[];
@@ -2174,7 +2250,16 @@ function reapplyInfo(c){                             // 모든 공고 통틀어 
 }
 function rejectedAll(){const out=[];for(const j of JOBS)for(const c of j.cands)if(c.rejected)out.push({c,j});return out;}
 function jobOf(id){return JOBS.find(j=>j.cands.some(c=>c.id===id))||job();}
-function render(){renderSide(); if(view==="rejected"){renderRejectView();} else {renderHead();renderBoard();}}
+function render(){renderSide(); if(view==="rejected"){renderRejectView();} else if(!JOBS.length){renderEmptyAts();} else {renderHead();renderBoard();}}
+// 채용 공고가 하나도 없을 때(신규 회사·불러오기 실패) 빈 화면
+function renderEmptyAts(){
+  $("#jobTools").style.display="none";
+  $("#jobTitle").textContent="채용 공고가 없습니다";
+  $("#jobReq").textContent="";
+  $("#board").innerHTML=SAVE_BLOCKED==="load"
+    ? `<div class="emp-empty" style="margin:40px auto;max-width:420px;text-align:center">서버에서 데이터를 불러오지 못했습니다.<br>인터넷 연결을 확인한 뒤 새로고침해 주세요.</div>`
+    : `<div class="emp-empty" style="margin:40px auto;max-width:420px;text-align:center">등록된 채용 공고가 없습니다.<br><button class="btn" style="margin-top:12px" onclick="openJob()">＋ 새 공고 만들기</button></div>`;
+}
 
 /* ── render ── */
 function renderSide(){
@@ -3377,7 +3462,7 @@ function closeAnnotate(){
 
 /* ── reset ── */
 async function cloudRefresh(){ await load(); curJob=(JOBS.find(j=>j.id===curJob)?curJob:(JOBS[0]&&JOBS[0].id)); computeIds(); closeDetail(); render(); }
-function resetDemo(){if(confirm("등록한 데이터를 모두 지우고 데모 초기 상태로 되돌릴까요?\n(클라우드 데이터도 초기화됩니다)")){JOBS=seed();computeIds();curJob=JOBS[0].id;try{localStorage.removeItem(STORE);}catch(e){}cloudPush();closeDetail();render();}}
+function resetDemo(){ alert("데이터 보호를 위해 사용할 수 없는 기능입니다."); }
 
 document.addEventListener('keydown',e=>{if(e.key==="Escape"){closeItv();closeDetail();closeAdd();closeJob();closeRej();}});
 
@@ -4194,6 +4279,69 @@ function renderAdminUsers(){
   html+=`</div>`;
   document.getElementById("adminBody").innerHTML=adminTabsHtml()+html;
 }
+// ═══════════════════════ 플랫폼 > 시점 복구 (플랫폼 운영자 전용) ═══════════════════════
+//   서버가 자동 보관한 변경 이력(company_data_history) 중 한 시점으로 회사 데이터를 되돌린다.
+//   복구 직전 상태도 서버가 자동 보관하므로, 복구 자체도 다시 되돌릴 수 있다.
+const CDH_REASON={ current:"현재 상태", auto:"자동 보관", risky:"⚠ 대량 삭제·감소 감지", delete:"⚠ 데이터 삭제 직전", before_restore:"복구 직전 상태", baseline:"최초 기준점" };
+function fmtKST(ts){
+  if(!ts) return "";
+  try{ return new Date(ts).toLocaleString("ko-KR",{ timeZone:"Asia/Seoul", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false }); }catch(e){ return String(ts).slice(0,16); }
+}
+function fmtBytes(n){ n=+n||0; return n>=1048576 ? (n/1048576).toFixed(1)+"MB" : Math.max(1,Math.round(n/1024))+"KB"; }
+async function openRestore(companyId){
+  if(!IS_PLATFORM_ADMIN){ alert("플랫폼 운영자만 사용할 수 있습니다."); return; }
+  const body=document.getElementById("platformBody"); if(!body) return;
+  const comp=(COMPANIES||[]).find(x=>String(x.id)===String(companyId));
+  const cname=comp?(comp.name||"(이름없음)"):"회사";
+  body.innerHTML=`<div class="rc-sec"><h3>🕘 시점 복구 — ${esc(cname)}</h3><div style="font-size:12.5px;color:var(--faint)">이력을 불러오는 중…</div></div>`;
+  const r=await sbRpc("list_company_history",{ p_company:String(companyId) });
+  if(!r.ok || !Array.isArray(r.data)){
+    body.innerHTML=`<div class="rc-sec"><h3>🕘 시점 복구 — ${esc(cname)}</h3>
+      <div style="color:#8B3A2F;font-size:12.5px">이력을 불러오지 못했습니다 (${r.status||"네트워크"}). 서버 설정(data_protect_증분2.sql) 적용 여부를 확인하세요.</div>
+      <div style="margin-top:12px"><button class="btn ghost" onclick="renderPlatform()">← 회사 목록</button></div></div>`;
+    return;
+  }
+  const rows=r.data;
+  const cur=rows.find(x=>x.reason==="current");
+  const hist=rows.filter(x=>x.reason!=="current");
+  const cnt=x=>`임직원 <b>${x.emp_count||0}</b> · 급여 <b>${x.pay_count||0}</b>건 · 공고 ${x.job_count||0} · 지원자 ${x.cand_count||0}`;
+  let html=`<div class="rc-sec"><h3>🕘 시점 복구 — ${esc(cname)}</h3>
+    <div style="font-size:11.5px;color:var(--muted);line-height:1.65;margin-bottom:12px">
+      선택한 시점의 데이터로 이 회사 전체(임직원·급여·채용·회사정보·교육)를 되돌립니다. 시점은 한국 시간이며, 각 행은 <b>그 시각 직전의 상태</b>입니다.<br>
+      · 복구 직전 상태는 자동 보관되므로 복구를 다시 되돌릴 수 있습니다. · 이 회사를 사용 중인 직원은 다음 저장 때 자동으로 새로고침 안내를 받습니다.<br>
+      · 증명사진은 이력에 보관하지 않으며, 복구 후에도 현재 사진을 사번 기준으로 유지합니다(현재 없는 사람의 사진은 복구되지 않음).<br>
+      · 보존 기간: 3일 이내 10분 단위 → 90일 이내 하루 1개 → 3년 이내 월 1개.</div>`;
+  html+=`<div class="user-row approved" style="background:var(--primary-soft)"><div class="user-info">
+      <div class="user-name">현재 상태 ${cur?`<span style="font-weight:600;color:var(--muted);font-size:11.5px">(최종 저장 ${esc(fmtKST(cur.captured_at))})</span>`:""}</div>
+      <div class="user-meta">${cur?cnt(cur)+" · "+fmtBytes(cur.bytes):"서버에 이 회사 데이터가 없습니다."}</div></div></div>`;
+  if(!hist.length) html+=`<div style="font-size:12.5px;color:var(--faint);padding:10px 2px">아직 보관된 이력이 없습니다.</div>`;
+  html+=hist.map(h=>{
+    const warn=(h.reason==="risky"||h.reason==="delete");
+    return `<div class="user-row approved"><div class="user-info">
+        <div class="user-name">${esc(fmtKST(h.captured_at))} <span style="font-size:11px;font-weight:700;color:${warn?"#8B3A2F":"var(--muted)"}">· ${esc(CDH_REASON[h.reason]||h.reason)}</span></div>
+        <div class="user-meta">${cnt(h)} · ${fmtBytes(h.bytes)}</div></div>
+      <div class="user-actions"><button class="btn" onclick="doRestore('${esc(companyId)}',${+h.id},'${esc(fmtKST(h.captured_at))}')">이 시점으로 복구</button></div></div>`;
+  }).join("");
+  html+=`<div style="margin-top:14px"><button class="btn ghost" onclick="renderPlatform()">← 회사 목록</button></div></div>`;
+  body.innerHTML=html;
+}
+async function doRestore(companyId, historyId, whenText){
+  const comp=(COMPANIES||[]).find(x=>String(x.id)===String(companyId));
+  const cname=comp?(comp.name||""):"";
+  const typed=prompt(`「${cname}」의 데이터를 ${whenText} 시점으로 복구합니다.\n현재 데이터는 자동 보관되어 다시 되돌릴 수 있습니다.\n\n진행하려면 회사명을 그대로 입력하세요.`);
+  if(typed===null) return;
+  if(typed.trim()!==(cname||"").trim()){ alert("회사명이 일치하지 않아 취소했습니다."); return; }
+  const r=await sbRpc("restore_company_data",{ p_history_id:historyId });
+  if(!r.ok || !r.data || !r.data.ok){ alert("복구에 실패했습니다 ("+(r.status||"네트워크")+"). 다시 시도하거나 서버 설정을 확인하세요."); return; }
+  if(String(companyId)===String(CURRENT_COMPANY_ID) || String(companyId)===String(REP_COMPANY_ID)){
+    SAVE_SEQ=SAVED_SEQ; clearTimeout(pushTimer);
+    alert("복구가 완료되었습니다.\n지금 보고 있는 회사이므로 화면을 새로고침합니다.");
+    location.reload();
+    return;
+  }
+  adminToast("✓ 복구 완료");
+  openRestore(companyId);
+}
 async function fillJoinCodeBox(){
   const box=document.getElementById("joinCodeBox"); if(!box) return;
   const cid=CURRENT_COMPANY_ID||DEFAULT_COMPANY_ID;
@@ -4330,6 +4478,7 @@ function renderPlatform(){
         <input id="ouid_${esc(c.id)}" type="text" placeholder="관리자 User UID (uuid)" style="${inp};min-width:260px">
         <input id="oname_${esc(c.id)}" type="text" placeholder="관리자 이름(선택)" style="${inp};min-width:260px">
         <button class="btn" onclick="linkOwner('${esc(c.id)}')">관리자 연결</button>
+        <button class="btn ghost" onclick="openRestore('${esc(c.id)}')">🕘 시점 복구</button>
         ${isBase?'':`<button class="btn ghost" style="color:#8B3A2F" onclick="deleteCompany('${esc(c.id)}')">회사 삭제</button>`}
       </div>
     </div>`;
@@ -4509,7 +4658,8 @@ async function hireAndContract(){
     const m=(MY_MEMBERSHIPS||[]).find(x=>String(x.company_id)===String(targetId));
     if(!m){ alert("선택한 입사 회사를 찾을 수 없습니다."); return; }
     if(!confirm(`'${m._name||"선택한 회사"}'(으)로 입사 처리합니다.\n화면이 해당 회사로 전환됩니다. 계속할까요?`)) return;
-    clearTimeout(pushTimer);                                  // 현재 회사 대기 저장 취소(전환 후 대상 회사로 재저장)
+    await flushBeforeSwitch();                                // 현재 회사 대기 저장을 먼저 확정
+    if(SAVE_BLOCKED==="conflict") return;
     CURRENT_MEMBERSHIP=m; CURRENT_COMPANY_ID=m.company_id; CURRENT_COMPANY=m._company;
     try{ localStorage.setItem(COMPANY_SEL_STORE, targetId); }catch(e){}
     curUser={ name:m.name||"", status:m.status, perms:(m.permissions||{}) };
@@ -4545,7 +4695,8 @@ async function hireGotoOtherCompany(companyId, empId){
   const m=(MY_MEMBERSHIPS||[]).find(x=>String(x.company_id)===String(companyId));
   if(!m){ alert("해당 회사를 찾을 수 없습니다."); return; }
   if(String(companyId)!==String(CURRENT_COMPANY_ID)){
-    clearTimeout(pushTimer);
+    await flushBeforeSwitch();
+    if(SAVE_BLOCKED==="conflict") return;
     CURRENT_MEMBERSHIP=m; CURRENT_COMPANY_ID=m.company_id; CURRENT_COMPANY=m._company;
     try{ localStorage.setItem(COMPANY_SEL_STORE, companyId); }catch(e){}
     curUser={ name:m.name||"", status:m.status, perms:(m.permissions||{}) };
@@ -4600,15 +4751,17 @@ async function confirmTransfer(){
   const leaveA=ymdAddDays(tdate,-1);
   if(!confirm(`'${e.name}' 님을 '${toName}'(으)로 전직명령 처리합니다.\n\n· ${fromName}: 퇴사(전출) 처리 (퇴사일 ${leaveA})\n· ${toName}: 신규 입사자로 생성 (입사일 ${tdate})\n\n계속할까요?`)) return;
 
-  clearTimeout(pushTimer);   // 진행 중 저장 취소(마지막에 현재 회사로 재저장)
+  await flushBeforeSwitch();   // 현재 회사 대기 저장 확정
+  if(SAVE_BLOCKED){ alert("저장이 중지된 상태입니다. 새로고침 후 다시 시도하세요."); return; }
 
   // 1) 대상 회사(B) blob 읽기 → 신규 레코드 추가 → 되쓰기 (B 기존 데이터 보존)
   let bData;
   try{
-    const g=await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${targetId}&select=data`, { headers: await sbHeaders() });
+    const g=await fetch(`${SUPABASE_URL}/rest/v1/company_data?company_id=eq.${targetId}&select=data,version`, { headers: await sbHeaders() });
     if(!g.ok) throw new Error("read "+g.status);
     const rows=await g.json();
     bData = rows.length ? unpackData(rows[0].data) : { jobs:[], employees:[], users:[], payrollRuns:[], companyInfo:{} };
+    DATA_VER[String(targetId)] = rows.length ? rows[0].version : null;
   }catch(err){ alert("대상 회사 데이터를 읽지 못했습니다. 네트워크를 확인하고 다시 시도하세요.\n("+(err&&err.message||err)+")"); return; }
 
   const newId = Math.max(0, ...bData.employees.map(x=>+x.id||0)) + 1;
@@ -4619,12 +4772,9 @@ async function confirmTransfer(){
 
   let bOk=false;
   try{
-    const w=await fetch(`${SUPABASE_URL}/rest/v1/company_data?on_conflict=company_id`, {
-      method:"POST",
-      headers: await sbHeaders({ "Prefer":"resolution=merge-duplicates,return=minimal" }),
-      body: JSON.stringify({ company_id: targetId, data: { jobs:bData.jobs||[], employees:bEmployees, payrollRuns:bData.payrollRuns||[], companyInfo:bData.companyInfo||{} }, updated_at:new Date().toISOString() })
-    });
-    bOk=w.ok;
+    const st=await saveBlob(targetId, { employees:bEmployees });   // 임직원 목록만 교체(교육·급여 등 보존), 버전 확인
+    if(st==="conflict"){ alert("대상 회사 데이터가 방금 다른 곳에서 변경되었습니다. 잠시 후 다시 시도하세요."); return; }
+    bOk=(st==="ok");
   }catch(err){ bOk=false; }
   if(!bOk){ alert("대상 회사에 저장하지 못했습니다. 현재 회사 데이터는 그대로 유지됩니다. 잠시 후 다시 시도하세요."); return; }
 
