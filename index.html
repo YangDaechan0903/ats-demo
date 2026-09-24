@@ -1556,11 +1556,13 @@ async function rrnCall(body){
    · 기록 실패가 업무를 막지 않도록 오류는 콘솔 경고만 남김. */
 const LOG_FN=`${SUPABASE_URL}/functions/v1/log-access`;
 async function logAccess(action, target, detail, result){
+  // 회사 ID는 호출 즉시 확정(await 사이에 다른 코드가 CURRENT_COMPANY_ID를 바꿔도 영향 없게)
+  const companyId=CURRENT_COMPANY_ID||"";
   try{
     if(!session || !session.access_token) return;
     const tok=await ensureToken();
     const r=await fetch(LOG_FN,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok,"apikey":SUPABASE_KEY},
-      body:JSON.stringify({action, companyId:CURRENT_COMPANY_ID||"", target:target||null, detail:detail||null, result:result||"success"})});
+      body:JSON.stringify({action, companyId, target:target||null, detail:detail||null, result:result||"success"})});
     if(!r.ok){ const d=await r.json().catch(()=>({})); console.warn("접속 기록 실패", r.status, d.error||""); }
   }catch(e){ console.warn("접속 기록 오류", e); }
 }
