@@ -3916,7 +3916,7 @@ let ADMIN_TAB="users";
 const AL_LIMIT=3000;
 const AL_ACTIONS={login:"로그인",logout:"로그아웃",company_switch:"회사 전환",rrn_view:"주민번호 열람",rrn_bulk:"주민번호 일괄 열람",
   download:"다운로드",print:"인쇄",emp_view:"임직원 조회",emp_create:"임직원 등록",emp_update:"임직원 수정",emp_delete:"임직원 삭제"};
-let AL={companyId:null,from:"",to:"",rows:[],reviews:[],loading:false,err:"",reviewErr:"",acct:"",act:"",capped:false};
+let AL={firstYm:"",companyId:null,from:"",to:"",rows:[],reviews:[],loading:false,err:"",reviewErr:"",acct:"",act:"",capped:false};
 function adminTab(t){ ADMIN_TAB=t; renderAdmin(); if(t==="log") alLoad(); }
 function adminTabsHtml(){
   const b=(k,l)=>`<button class="edit-btn" style="font-size:14px;padding:9px 16px;${ADMIN_TAB===k?"background:#3B2419;color:#fff;border-color:#3B2419":""}" onclick="adminTab('${k}')">${l}</button>`;
@@ -3950,10 +3950,13 @@ async function alLoad(){
     const cid=encodeURIComponent(CURRENT_COMPANY_ID);
     const from=encodeURIComponent(AL.from+"T00:00:00+09:00");
     const to=encodeURIComponent(new Date(new Date(AL.to+"T00:00:00+09:00").getTime()+86400000).toISOString());
-    const [r1,r2]=await Promise.all([
+    const [r1,r2,r3]=await Promise.all([
       fetch(`${SUPABASE_URL}/rest/v1/access_logs?select=*&company_id=eq.${cid}&created_at=gte.${from}&created_at=lt.${to}&order=created_at.desc&limit=${AL_LIMIT}`,{headers:await sbHeaders()}),
-      fetch(`${SUPABASE_URL}/rest/v1/access_log_reviews?select=*&company_id=eq.${cid}&order=review_month.desc&limit=24`,{headers:await sbHeaders()})
+      fetch(`${SUPABASE_URL}/rest/v1/access_log_reviews?select=*&company_id=eq.${cid}&order=review_month.desc&limit=24`,{headers:await sbHeaders()}),
+      fetch(`${SUPABASE_URL}/rest/v1/access_logs?select=created_at&company_id=eq.${cid}&order=created_at.asc&limit=1`,{headers:await sbHeaders()})
     ]);
+    const first=r3.ok?await r3.json():[];   // 이 회사의 첫 기록 월(기록 시작 전 달은 점검 대상에서 제외)
+    AL.firstYm=(first[0]&&first[0].created_at)?alKst(first[0].created_at).slice(0,7):"";
     if(!r1.ok) throw new Error("접속 기록 조회 실패 ("+r1.status+")");
     AL.rows=await r1.json(); AL.capped=AL.rows.length>=AL_LIMIT;
     AL.reviews=r2.ok?await r2.json():[]; AL.reviewErr=r2.ok?"":"점검 기록을 불러오지 못했습니다 ("+r2.status+")";
@@ -3983,7 +3986,8 @@ function renderAccessLog(){
       <td style="text-align:left;color:var(--muted)">${esc(alEnv(r.user_agent))}</td></tr>`;
   }).join("");
   const nowYm=alTodayKst().slice(0,7);
-  const months=[0,1,2,3,4,5].map(i=>alMonthShift(nowYm,-i));
+  const startYm=AL.firstYm||nowYm;
+  const months=[...Array(12).keys()].map(i=>alMonthShift(nowYm,-i)).filter(ym=>ym>=startYm);
   const rv=months.map(ym=>{
     const x=(AL.reviews||[]).find(v=>v.review_month===ym);
     return `<tr><td style="text-align:center;font-weight:700">${ym}</td>
