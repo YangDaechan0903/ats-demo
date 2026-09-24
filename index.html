@@ -782,6 +782,8 @@
 
     <!-- 회원가입 폼 -->
     <div id="signupForm" style="display:none">
+      <div class="login-field"><label>회사 가입 코드</label><input id="suCode" type="text" placeholder="예: AB3D-7KQM" maxlength="9" autocomplete="off" autocapitalize="characters" spellcheck="false" oninput="this.value=fmtJoinInput(this.value)" style="letter-spacing:.08em;font-weight:700">
+        <div style="font-size:11px;color:var(--faint);margin-top:5px">소속 회사 관리자에게 받은 8자리 코드를 입력하세요.</div></div>
       <div class="login-field"><label>이름</label><input id="suName" type="text" placeholder="홍길동"></div>
       <div class="login-field"><label>이메일</label><input id="suEmail" type="email" placeholder="name@example.com"></div>
       <div class="login-field"><label>비밀번호</label><input id="suPw" type="password" placeholder="6자 이상"></div>
@@ -2018,7 +2020,13 @@ async function doLogin(){
       // status==="active" → 통과
     } else {
       // 멤버십이 없음 = 승인된 소속 없음
-      btn.disabled=false; btn.textContent="로그인"; err.textContent="승인된 소속이 없습니다. 회원가입 신청 후 관리자 승인을 받아주세요."; saveSession(null); return;
+      const st=await sbRpc("my_join_status",{});
+      const d=(st.ok&&st.data)||{};
+      const cn=d.company?`「${d.company}」 `:"";
+      let m="소속된 회사가 없습니다. 회원가입에서 회사 가입 코드로 신청해 주세요.";
+      if(d.status==="pending") m=`${cn}관리자 승인 대기 중입니다. 승인 후 로그인할 수 있습니다.`;
+      else if(d.status==="rejected") m=`${cn}가입이 거절되었습니다. 회사 관리자에게 문의하세요.`;
+      btn.disabled=false; btn.textContent="로그인"; err.textContent=m; saveSession(null); return;
     }
   }
   btn.disabled=false; btn.textContent="로그인";
@@ -2037,6 +2045,22 @@ function showLogin(){
   document.getElementById("loginTitle").textContent="e-HRIS 로그인";
   document.getElementById("loginSub").textContent="계속하려면 로그인하세요";
 }
+// ── 회사 가입 코드 ── (서버 함수 request_join / my_join_status / regen_join_code, join_code_증분1.sql)
+function normJoinCode(v){ return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,""); }
+function fmtJoinCode(c){ c=normJoinCode(c); return c.length>4 ? c.slice(0,4)+"-"+c.slice(4,8) : c; }
+function fmtJoinInput(v){ return fmtJoinCode(normJoinCode(v).slice(0,8)); }
+async function sbRpc(fn, args){
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`,{ method:"POST", headers:await sbHeaders(), body:JSON.stringify(args||{}) });
+    const d=await r.json().catch(()=>null);
+    return { ok:r.ok, status:r.status, data:d };
+  }catch(e){ return { ok:false, status:0, data:null }; }
+}
+function copyText(t){
+  const done=()=>adminToast("✓ 복사되었습니다");
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done,()=>prompt("아래 코드를 복사하세요",t)); return; } }catch(e){}
+  prompt("아래 코드를 복사하세요", t);
+}
 // 현재 로그인 세션의 auth user id 조회
 async function getMyUid(){
   try{ const r=await fetch(`${SUPABASE_URL}/auth/v1/user`,{headers:await sbHeaders()}); if(r.ok){ const d=await r.json(); return d.id||(d.user&&d.user.id)||null; } }catch(e){}
@@ -2045,11 +2069,13 @@ async function getMyUid(){
 async function doSignup(){
   const btn=document.getElementById("suBtn");
   const err=document.getElementById("suErr");
+  const code=normJoinCode(document.getElementById("suCode").value);
   const name=document.getElementById("suName").value.trim();
   const email=document.getElementById("suEmail").value.trim();
   const pw=document.getElementById("suPw").value;
   const pw2=document.getElementById("suPw2").value;
   err.className="login-err";
+  if(code.length!==8){ err.textContent="회사 가입 코드 8자리를 정확히 입력하세요."; return; }
   if(!name||!email||!pw){ err.textContent="이름·이메일·비밀번호를 모두 입력하세요."; return; }
   if(pw.length<6){ err.textContent="비밀번호는 6자 이상이어야 합니다."; return; }
   if(pw!==pw2){ err.textContent="비밀번호가 일치하지 않습니다."; return; }
@@ -2072,35 +2098,28 @@ async function doSignup(){
   // 2) 본인 자격으로 신청하려면 로그인(세션 확보)
   const si=await signIn(email,pw);
   if(!si.ok){ restore(alreadyExists?"이미 가입된 이메일입니다. 로그인해 주세요.":"계정은 생성되었습니다. 잠시 후 로그인해 신청을 완료해 주세요.", false); return; }
-  const uid=await getMyUid();
-  if(!uid){ saveSession(null); restore("신청 처리 중 오류(사용자 확인 실패). 다시 시도해 주세요.", false); return; }
-  // 3) 이미 멤버십이 있는지 확인 (재신청 방지)
-  let already=null;
-  try{
-    const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships?user_id=eq.${uid}&company_id=eq.${DEFAULT_COMPANY_ID}&select=id,status`,{headers:await sbHeaders()});
-    if(r.ok){ const rows=await r.json(); if(rows.length) already=rows[0]; }
-  }catch(e){}
-  // 4) 신청 INSERT 또는 상태 안내
-  let okMsg="✓ 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.";
-  if(already){
-    if(already.status==="active") okMsg="이미 승인된 계정입니다. 로그인해 주세요.";
-    else if(already.status==="rejected") okMsg="이 계정은 접근이 거절된 상태입니다. 관리자에게 문의하세요.";
-    else okMsg="이미 신청이 접수되어 관리자 승인 대기 중입니다.";
-  } else {
-    try{
-      const r=await fetch(`${SUPABASE_URL}/rest/v1/memberships`,{
-        method:"POST",
-        headers: await sbHeaders({ "Prefer":"return=minimal" }),
-        body: JSON.stringify({ company_id:DEFAULT_COMPANY_ID, user_id:uid, name, role:"member", status:"pending",
-          permissions:{ats:false,contract:false,employees:false,labor:false,hrPayroll:false} })
-      });
-      if(!r.ok){ const d=await r.json().catch(()=>({})); saveSession(null); restore("신청 등록 실패 ("+r.status+"). "+((d&&(d.message||d.hint))||""), false); return; }
-    }catch(e){ saveSession(null); restore("신청 등록 중 네트워크 오류.", false); return; }
+  // 3) 가입 코드로 회사 확인 후 신청 등록 (회사 지정은 서버가 코드로만 판단)
+  const jr=await sbRpc("request_join",{ p_code:code, p_name:name });
+  if(!jr.ok || !jr.data || !jr.data.result){
+    saveSession(null);
+    restore(jr.status===404 ? "가입 신청 기능이 아직 설정되지 않았습니다. 관리자에게 문의하세요." : "신청 등록 중 오류가 발생했습니다 ("+(jr.status||"네트워크")+"). 잠시 후 다시 시도해 주세요.", false);
+    return;
+  }
+  const cname=jr.data.company?`「${jr.data.company}」`:"회사";
+  let okMsg="";
+  switch(jr.data.result){
+    case "created":  okMsg=`✓ ${cname}에 가입 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.`; break;
+    case "pending":  okMsg=`${cname}에 이미 신청이 접수되어 관리자 승인 대기 중입니다.`; break;
+    case "active":   okMsg=`${cname}에 이미 승인된 계정입니다. 로그인해 주세요.`; break;
+    case "rejected": saveSession(null); restore(`${cname} 가입이 거절된 계정입니다. 회사 관리자에게 문의하세요.`, false); return;
+    case "invalid_code": saveSession(null); restore("회사 가입 코드가 올바르지 않습니다. 코드를 확인한 뒤 같은 이메일·비밀번호로 다시 신청해 주세요.", false); return;
+    case "too_many": saveSession(null); restore("코드 입력 오류가 많아 잠시 차단되었습니다. 1시간 후 다시 시도해 주세요.", false); return;
+    default: saveSession(null); restore("신청을 처리하지 못했습니다. 다시 시도해 주세요.", false); return;
   }
   // 5) 승인 전이므로 로그인 상태는 해제
   saveSession(null);
   restore(okMsg, true);
-  document.getElementById("suName").value=""; document.getElementById("suEmail").value="";
+  document.getElementById("suCode").value=""; document.getElementById("suName").value=""; document.getElementById("suEmail").value="";
   document.getElementById("suPw").value=""; document.getElementById("suPw2").value="";
 }
 // 비로그인 상태에서 users만 안전하게 병합 저장
@@ -4126,6 +4145,9 @@ function renderAdminUsers(){
   const idTag=(uid)=>`ID ${esc(String(uid||"").slice(0,8))}…`;
 
   let html="";
+  // 회사 가입 코드
+  html+=`<div class="rc-sec"><h3>회사 가입 코드</h3><div id="joinCodeBox" style="font-size:12.5px;color:var(--faint)">불러오는 중…</div></div>`;
+  setTimeout(fillJoinCodeBox,0);
   // 승인 대기
   html+=`<div class="rc-sec"><h3>승인 대기 <span class="badge">${pending.length}</span></h3>`;
   if(!pending.length){ html+=`<div style="font-size:12.5px;color:var(--faint);padding:6px 2px">대기 중인 가입 신청이 없습니다.</div>`; }
@@ -4171,6 +4193,48 @@ function renderAdminUsers(){
   }
   html+=`</div>`;
   document.getElementById("adminBody").innerHTML=adminTabsHtml()+html;
+}
+async function fillJoinCodeBox(){
+  const box=document.getElementById("joinCodeBox"); if(!box) return;
+  const cid=CURRENT_COMPANY_ID||DEFAULT_COMPANY_ID;
+  let row=null;
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/company_join_codes?company_id=eq.${cid}&select=code,updated_at`,{headers:await sbHeaders()});
+    if(r.ok){ const a=await r.json(); row=a[0]||null; }
+  }catch(e){}
+  if(!document.getElementById("joinCodeBox")) return;
+  if(!row){ box.innerHTML=`<span style="color:#8B3A2F">가입 코드를 불러오지 못했습니다. (서버 설정 또는 권한 확인 필요)</span>`; return; }
+  const code=fmtJoinCode(row.code);
+  box.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:22px;font-weight:800;letter-spacing:.12em;color:var(--ink);background:var(--primary-soft);border-radius:9px;padding:6px 14px">${esc(code)}</span>
+      <button class="btn" onclick="copyText('${esc(code)}')">복사</button>
+      <button class="btn ghost" onclick="regenJoinCode('${esc(cid)}')">새 코드 발급</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:9px;line-height:1.6">직원에게 이 코드를 알려 주세요. 회원가입 시 코드를 입력하면 아래 <b>승인 대기</b>에 표시됩니다.<br>
+      코드가 외부에 알려졌다면 <b>새 코드 발급</b>을 누르세요. 기존 코드는 즉시 사용할 수 없게 됩니다. · 발급 ${esc((row.updated_at||"").slice(0,10))}</div>`;
+}
+async function regenJoinCode(cid){
+  if(!confirm("새 가입 코드를 발급할까요?\n기존 코드는 즉시 사용할 수 없게 됩니다.\n(이미 가입한 사용자에게는 영향이 없습니다)")) return;
+  const r=await sbRpc("regen_join_code",{ p_company:String(cid) });
+  if(!r.ok){ alert("새 코드 발급에 실패했습니다. 관리자 권한·네트워크를 확인하세요."); return; }
+  adminToast("✓ 새 코드가 발급되었습니다");
+  if(document.getElementById("joinCodeBox")) fillJoinCodeBox();
+  if(document.getElementById("platformBody")) fillPlatformJoinCodes();
+}
+async function fillPlatformJoinCodes(){
+  let rows=[];
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/company_join_codes?select=company_id,code`,{headers:await sbHeaders()});
+    if(r.ok) rows=await r.json();
+  }catch(e){}
+  const map={}; rows.forEach(x=>map[String(x.company_id)]=x.code);
+  (COMPANIES||[]).forEach(c=>{
+    const el=document.getElementById("pjc_"+c.id); if(!el) return;
+    const code=map[String(c.id)];
+    el.innerHTML = code
+      ? `가입 코드 <b style="font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;color:var(--ink)">${esc(fmtJoinCode(code))}</b> <a style="cursor:pointer;color:var(--primary);font-weight:700;margin-left:4px" onclick="copyText('${esc(fmtJoinCode(code))}')">복사</a> <a style="cursor:pointer;color:var(--muted);margin-left:6px" onclick="regenJoinCode('${esc(c.id)}')">새 코드</a>`
+      : `<span style="color:#8B3A2F">가입 코드 없음</span>`;
+  });
 }
 async function approveMembership(id){
   const m=MEMBERSHIPS.find(x=>String(x.id)===String(id)); if(!m) return;
@@ -4234,7 +4298,7 @@ function renderPlatform(){
   let html="";
   // 새 회사 만들기
   html+=`<div class="rc-sec"><h3>새 회사 만들기</h3>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">고객사(테넌트)를 생성합니다. 생성 후, 그 회사 담당자가 회원가입하면 <b>사용자 관리</b>에서 관리자로 지정합니다.</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">고객사(테넌트)를 생성합니다. 생성과 동시에 <b>회사 가입 코드</b>가 자동 발급되며, 직원은 이 코드로 회원가입을 신청합니다.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
       <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">회사명</label>
         <input id="pcName" type="text" placeholder="㈜예시" style="${inp}"></div>
@@ -4260,6 +4324,7 @@ function renderPlatform(){
         <div class="user-name">${esc(c.name||"(이름없음)")}${isBase?' <span style="color:#5A3A2B;font-size:10.5px;font-weight:800">· 기준 회사</span>':''}</div>
         <div class="user-email">${esc(c.biz_no||"사업자번호 미입력")} · 요금제 ${esc(c.plan||"free")}</div>
         <div class="user-meta">관리자: ${ownerText} · ID ${esc(String(c.id||"").slice(0,8))}… · 생성 ${esc((c.created_at||"").slice(0,10))}</div>
+        <div class="user-meta" id="pjc_${esc(c.id)}" style="margin-top:3px">가입 코드 불러오는 중…</div>
       </div>
       <div class="user-actions" style="flex-direction:column;align-items:stretch;gap:6px;min-width:270px">
         <input id="ouid_${esc(c.id)}" type="text" placeholder="관리자 User UID (uuid)" style="${inp};min-width:260px">
@@ -4272,6 +4337,7 @@ function renderPlatform(){
   }
   html+=`</div>`;
   body.innerHTML=html;
+  fillPlatformJoinCodes();
 }
 // 회사 삭제: 회사명 재입력 확인 후 자식(멤버십·데이터)부터 삭제 (기준 회사는 보호)
 async function deleteCompany(id){
